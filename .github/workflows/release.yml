@@ -1,0 +1,42 @@
+name: Windows release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.41.2
+          channel: stable
+          cache: true
+      - uses: dtolnay/rust-toolchain@1.92.0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Install VeloPack
+        run: dotnet tool install --global vpk
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        run: '"version=$($env:GITHUB_REF_NAME.TrimStart(''v''))" >> $env:GITHUB_OUTPUT'
+      - name: Build packages
+        shell: pwsh
+        env:
+          GITFRONT_SIGN_TEMPLATE: ${{ secrets.GITFRONT_SIGN_TEMPLATE }}
+        run: >-
+          ./scripts/package_windows.ps1
+          -Version "${{ steps.version.outputs.version }}"
+          -GitHubRepository "${{ github.server_url }}/${{ github.repository }}"
+      - name: Publish GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$env:GITHUB_REF_NAME" artifacts/releases/* --generate-notes --verify-tag
