@@ -17,8 +17,9 @@ use rust_lib_gitfront_preview::api::models::{
     RepositoryState, ResetMode, SequenceControl,
 };
 use std::fs;
+use std::io::Write;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 use tempfile::TempDir;
 
 fn git(directory: &Path, arguments: &[&str]) {
@@ -50,6 +51,35 @@ fn git_text(directory: &Path, arguments: &[&str]) -> String {
         String::from_utf8_lossy(&output.stderr)
     );
     String::from_utf8_lossy(&output.stdout).trim().to_owned()
+}
+
+fn create_branch_refs(directory: &Path, names: impl IntoIterator<Item = String>) {
+    let head = git_text(directory, &["rev-parse", "HEAD"]);
+    let mut input = String::new();
+    for name in names {
+        input.push_str(&format!("create refs/heads/{name} {head}\n"));
+    }
+    let mut child = Command::new("git")
+        .arg("-C")
+        .arg(directory)
+        .args(["update-ref", "--stdin"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("git update-ref starts");
+    child
+        .stdin
+        .as_mut()
+        .expect("git update-ref stdin")
+        .write_all(input.as_bytes())
+        .expect("write branch refs");
+    let output = child.wait_with_output().expect("git update-ref completes");
+    assert!(
+        output.status.success(),
+        "git update-ref failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 fn repository() -> TempDir {
@@ -876,9 +906,10 @@ fn stages_only_selected_lines_from_a_hunk() {
 #[test]
 fn branch_pages_transfer_only_the_requested_slice() {
     let directory = repository();
-    for index in 0..7 {
-        git(directory.path(), &["branch", &format!("branch-{index}")]);
-    }
+    create_branch_refs(
+        directory.path(),
+        (0..7).map(|index| format!("branch-{index}")),
+    );
     let path = directory.path().to_string_lossy().into_owned();
     let opened = refresh_repository_paged(path.clone(), 3).expect("paged snapshot");
     assert!(opened.snapshot.branches.is_empty());
@@ -886,9 +917,10 @@ fn branch_pages_transfer_only_the_requested_slice() {
     assert_eq!(opened.branches.total_branches, 8);
 
     // Create enough refs to exercise the fixed 250 item first page.
-    for index in 7..260 {
-        git(directory.path(), &["branch", &format!("many-{index}")]);
-    }
+    create_branch_refs(
+        directory.path(),
+        (7..260).map(|index| format!("many-{index}")),
+    );
     let opened = refresh_repository_paged(path.clone(), 3).expect("large branch snapshot");
     assert_eq!(opened.branches.branches.len(), 250);
     let second = list_branches_cursor(
