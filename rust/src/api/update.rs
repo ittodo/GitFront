@@ -5,15 +5,21 @@ use velopack::sources::GithubSource;
 use velopack::{UpdateCheck, UpdateInfo, UpdateManager, VelopackApp};
 
 static PENDING_UPDATE: Lazy<Mutex<Option<UpdateInfo>>> = Lazy::new(|| Mutex::new(None));
+const DEFAULT_UPDATE_REPOSITORY: &str = "https://github.com/ittodo/GitFront";
 
 fn update_repository() -> Option<&'static str> {
-    option_env!("GITFRONT_UPDATE_REPOSITORY").filter(|value| !value.trim().is_empty())
+    if cfg!(debug_assertions) {
+        return None;
+    }
+    option_env!("GITFRONT_UPDATE_REPOSITORY")
+        .filter(|value| !value.trim().is_empty())
+        .or(Some(DEFAULT_UPDATE_REPOSITORY))
 }
 
 fn manager() -> Result<UpdateManager, String> {
     let repository = update_repository()
         .ok_or_else(|| "Updates are disabled in this development build.".to_owned())?;
-    UpdateManager::new(GithubSource::new(repository, None, false), None, None)
+    UpdateManager::new(GithubSource::new(repository, None, true), None, None)
         .map_err(|error| error.to_string())
 }
 

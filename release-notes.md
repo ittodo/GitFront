@@ -1,7 +1,7 @@
-# GitFront Preview 0.1.3
+# GitFront Preview 0.0.1
 
-- Virtualize diff rows so long commit and working-tree diffs remain responsive.
-- Run syntax highlighting only for visible diff lines and cap pathological single-line rendering.
-- Virtualize change lists, repository sidebars, stash diffs, conflict panes, and operation logs.
-- Make split-panel dragging local and frame-coalesced, persist only on release, and allow wider movement ranges.
-- Keep repository tabs, partial stage, history, branches, remotes, merge/rebase, stash, and conflict workflows from the initial preview.
+- First public preview of the Windows Git client.
+- Show HEAD, local branch, remote branch, and tag badges in commit history.
+- Add commit comparison, checkout, cherry-pick, revert, rebase, and guarded reset actions.
+- Keep large change, history, and branch lists responsive through virtualized rendering and fast refresh paths.
+- Include repository tabs, partial staging, diffs, branches, remotes, merge/rebase, stash, and conflict resolution.

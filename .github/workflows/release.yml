@@ -12,21 +12,51 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: 3.41.2
           channel: stable
           cache: true
       - uses: dtolnay/rust-toolchain@1.92.0
+        with:
+          components: rustfmt, clippy
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
+      - name: Flutter dependencies
+        run: flutter pub get
+      - name: Flutter analyze
+        run: flutter analyze
+      - name: Flutter tests
+        run: flutter test
+      - name: Rust format
+        working-directory: rust
+        run: cargo fmt --check
+      - name: Rust lint
+        working-directory: rust
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Rust tests
+        working-directory: rust
+        run: cargo test --locked
       - name: Install VeloPack
-        run: dotnet tool install --global vpk
+        run: dotnet tool install --global vpk --version 1.2.0
       - name: Resolve version
         id: version
         shell: pwsh
         run: '"version=$($env:GITHUB_REF_NAME.TrimStart(''v''))" >> $env:GITHUB_OUTPUT'
+      - name: Download previous VeloPack release
+        if: steps.version.outputs.version != '0.0.1'
+        shell: pwsh
+        env:
+          VPK_TOKEN: ${{ github.token }}
+        run: >-
+          vpk download github
+          --repoUrl "${{ github.server_url }}/${{ github.repository }}"
+          --outputDir artifacts/releases
+          --token "$env:VPK_TOKEN"
+          --pre true
       - name: Build packages
         shell: pwsh
         env:
@@ -35,8 +65,32 @@ jobs:
           ./scripts/package_windows.ps1
           -Version "${{ steps.version.outputs.version }}"
           -GitHubRepository "${{ github.server_url }}/${{ github.repository }}"
-      - name: Publish GitHub release
+      - name: Store Windows packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: GitFront-Preview-${{ steps.version.outputs.version }}-windows
+          if-no-files-found: error
+          path: |
+            artifacts/releases/dev.gitfront.preview-${{ steps.version.outputs.version }}-*.nupkg
+            artifacts/releases/dev.gitfront.preview-win-Portable.zip
+            artifacts/releases/dev.gitfront.preview-win-Setup.exe
+            artifacts/releases/releases.win.json
+      - name: Publish VeloPack GitHub release
+        shell: pwsh
+        env:
+          VPK_TOKEN: ${{ github.token }}
+        run: >-
+          vpk upload github
+          --repoUrl "${{ github.server_url }}/${{ github.repository }}"
+          --outputDir artifacts/releases
+          --token "$env:VPK_TOKEN"
+          --publish true
+          --pre true
+          --releaseName "GitFront Preview ${{ steps.version.outputs.version }}"
+          --tag "$env:GITHUB_REF_NAME"
+          --targetCommitish "$env:GITHUB_SHA"
+      - name: Apply release notes
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$env:GITHUB_REF_NAME" artifacts/releases/* --generate-notes --verify-tag
+        run: gh release edit "$env:GITHUB_REF_NAME" --notes-file release-notes.md --prerelease

@@ -1,6 +1,6 @@
 # GitFront Preview
 
-GitFront is a Windows-first desktop Git client with a Flutter interface and a Rust Git core. The current name and package identity are preview values and must be replaced before the first public release.
+GitFront is a Windows-first desktop Git client with a Flutter interface and a Rust Git core. The current name and package identity are preview values used throughout the `0.0.x` releases and will be reviewed before `0.1.0`.
 
 ## Included workflows
 
@@ -59,15 +59,17 @@ Install VeloPack's `vpk` tool and run:
 
 ```powershell
 dotnet tool install --global vpk
-./scripts/package_windows.ps1 -Version 0.1.0
+./scripts/package_windows.ps1 -Version 0.0.1
 ```
 
 To enable GitHub Releases update checks in the packaged build, provide the repository URL:
 
 ```powershell
 ./scripts/package_windows.ps1 `
-  -Version 0.1.0 `
+  -Version 0.0.1 `
   -GitHubRepository "https://github.com/owner/repository"
 ```
 
 The script produces a per-user installer and portable package under `artifacts/releases`. Set `GITFRONT_SIGN_TEMPLATE` to a VeloPack signing command containing `{{file}}` when a code-signing certificate becomes available. Development builds omit the update feed and report updates as disabled.
+
+Preview versions advance from `0.0.1` through `0.0.99`, followed by `0.1.0`. Flutter, Rust, VeloPack, and Git tags use the same three-part version without a separate `+build` suffix.
