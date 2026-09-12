@@ -49,6 +49,22 @@ pub fn refresh_repository(path: String) -> Result<RepositorySnapshot, String> {
     open_repository(path)
 }
 
+pub fn refresh_working_tree(path: String) -> Result<WorkingTreeSnapshot, String> {
+    let repo = Repository::discover(&path).map_err(format_git_error)?;
+    let workdir = repo
+        .workdir()
+        .ok_or_else(|| "Bare repositories are not supported in the desktop view.".to_owned())?;
+    let canonical = workdir
+        .canonicalize()
+        .unwrap_or_else(|_| workdir.to_path_buf());
+    let repository_path = display_path(&canonical);
+    Ok(WorkingTreeSnapshot {
+        generation: next_generation(&repository_path),
+        state: map_repository_state(repo.state()),
+        files: collect_status(&repo)?,
+    })
+}
+
 pub fn watch_repository(
     path: String,
     sink: StreamSink<RepositoryWatchEvent>,
@@ -115,7 +131,7 @@ fn build_snapshot(repo: &Repository) -> Result<RepositorySnapshot, String> {
 
     let (head_name, head_oid, upstream, ahead, behind) = head_information(repo)?;
     let files = collect_status(repo)?;
-    let branches = collect_branches(repo)?;
+    let branches = collect_branches(repo, head_name.as_deref(), ahead, behind)?;
     let remotes = collect_remotes(repo)?;
     let stashes = collect_stashes(repo)?;
     let generation = next_generation(&repository_path);
@@ -214,13 +230,7 @@ fn collect_status(repo: &Repository) -> Result<Vec<FileChange>, String> {
             untracked: status.is_wt_new(),
         });
     }
-    files.sort_by(|left, right| {
-        right
-            .conflicted
-            .cmp(&left.conflicted)
-            .then_with(|| right.untracked.cmp(&left.untracked))
-            .then_with(|| left.path.to_lowercase().cmp(&right.path.to_lowercase()))
-    });
+    files.sort_by_cached_key(|file| (!file.conflicted, !file.untracked, file.path.to_lowercase()));
     Ok(files)
 }
 
@@ -262,7 +272,12 @@ fn unstaged_kind(status: Status) -> ChangeKind {
     }
 }
 
-fn collect_branches(repo: &Repository) -> Result<Vec<BranchInfo>, String> {
+fn collect_branches(
+    repo: &Repository,
+    head_name: Option<&str>,
+    head_ahead: i64,
+    head_behind: i64,
+) -> Result<Vec<BranchInfo>, String> {
     let mut branches = Vec::new();
     for branch_result in repo.branches(None).map_err(format_git_error)? {
         let (branch, branch_type) = branch_result.map_err(format_git_error)?;
@@ -275,35 +290,37 @@ fn collect_branches(repo: &Repository) -> Result<Vec<BranchInfo>, String> {
         let full_name = branch.get().name().unwrap_or_default().to_owned();
         let oid = branch.get().target().map(|oid| oid.to_string());
         let mut upstream = None;
+        let is_head = branch.is_head();
         let mut ahead = 0;
         let mut behind = 0;
         if !is_remote && let Ok(upstream_branch) = branch.upstream() {
             upstream = upstream_branch.name().ok().flatten().map(str::to_owned);
-            if let (Some(local_oid), Some(remote_oid)) =
-                (branch.get().target(), upstream_branch.get().target())
-                && let Ok((a, b)) = repo.graph_ahead_behind(local_oid, remote_oid)
-            {
-                ahead = a as i64;
-                behind = b as i64;
+            // Walking the graph for every local branch makes repositories with
+            // hundreds of branches painfully slow. The toolbar only needs live
+            // counts for the checked-out branch; other branches keep their
+            // upstream name and can be evaluated when they become current.
+            if is_head && head_name == Some(name.as_str()) {
+                ahead = head_ahead;
+                behind = head_behind;
             }
         }
         branches.push(BranchInfo {
             name,
             full_name,
             oid,
-            is_head: branch.is_head(),
+            is_head,
             is_remote,
             upstream,
             ahead,
             behind,
         });
     }
-    branches.sort_by(|left, right| {
-        right
-            .is_head
-            .cmp(&left.is_head)
-            .then_with(|| left.is_remote.cmp(&right.is_remote))
-            .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
+    branches.sort_by_cached_key(|branch| {
+        (
+            !branch.is_head,
+            branch.is_remote,
+            branch.name.to_lowercase(),
+        )
     });
     Ok(branches)
 }
@@ -361,7 +378,6 @@ pub fn list_commits(path: String, offset: u32, limit: u32) -> Result<CommitPage,
         .set_sorting(Sort::TOPOLOGICAL | Sort::TIME)
         .map_err(format_git_error)?;
 
-    let references = references_by_oid(&repo)?;
     let requested = limit.clamp(1, 500) as usize;
     let mut raw = Vec::with_capacity(requested + 1);
     for oid_result in revwalk.skip(offset as usize).take(requested + 1) {
@@ -383,7 +399,7 @@ pub fn list_commits(path: String, offset: u32, limit: u32) -> Result<CommitPage,
                 .parent_ids()
                 .map(|parent| parent.to_string())
                 .collect(),
-            references: references.get(&oid).cloned().unwrap_or_default(),
+            references: Vec::new(),
             lane: GraphLane {
                 column: 0,
                 parent_columns: Vec::new(),
@@ -392,6 +408,16 @@ pub fn list_commits(path: String, offset: u32, limit: u32) -> Result<CommitPage,
     }
     let has_more = raw.len() > requested;
     raw.truncate(requested);
+    let visible_oids = raw
+        .iter()
+        .filter_map(|commit| Oid::from_str(&commit.oid).ok())
+        .collect::<HashSet<_>>();
+    let references = references_by_oid(&repo, &visible_oids)?;
+    for commit in &mut raw {
+        if let Ok(oid) = Oid::from_str(&commit.oid) {
+            commit.references = references.get(&oid).cloned().unwrap_or_default();
+        }
+    }
     assign_graph_lanes(&mut raw);
     Ok(CommitPage {
         commits: raw,
@@ -434,6 +460,22 @@ pub fn get_commit_detail(path: String, oid: String) -> Result<CommitDetail, Stri
             .collect(),
         diff,
     })
+}
+
+pub fn compare_commits(
+    path: String,
+    from_oid: String,
+    to_oid: String,
+) -> Result<DiffDocument, String> {
+    let repo = Repository::discover(path).map_err(format_git_error)?;
+    let from = find_commit(&repo, &from_oid)?;
+    let to = find_commit(&repo, &to_oid)?;
+    let from_tree = from.tree().map_err(format_git_error)?;
+    let to_tree = to.tree().map_err(format_git_error)?;
+    let diff = repo
+        .diff_tree_to_tree(Some(&from_tree), Some(&to_tree), None)
+        .map_err(format_git_error)?;
+    convert_diff(&diff, false)
 }
 
 pub fn get_worktree_diff(
@@ -567,17 +609,79 @@ fn delta_status(delta: DiffDelta<'_>) -> String {
     format!("{:?}", delta.status()).to_lowercase()
 }
 
-fn references_by_oid(repo: &Repository) -> Result<HashMap<Oid, Vec<String>>, String> {
-    let mut result: HashMap<Oid, Vec<String>> = HashMap::new();
+fn references_by_oid(
+    repo: &Repository,
+    visible_oids: &HashSet<Oid>,
+) -> Result<HashMap<Oid, Vec<CommitReference>>, String> {
+    let mut result: HashMap<Oid, Vec<CommitReference>> = HashMap::new();
     for reference_result in repo.references().map_err(format_git_error)? {
         let reference = reference_result.map_err(format_git_error)?;
-        if let Ok(commit) = reference.peel(ObjectType::Commit)
-            && let Ok(name) = reference.shorthand()
+        let Ok(full_name) = reference.name() else {
+            continue;
+        };
+        let (kind, name) = if let Some(name) = full_name.strip_prefix("refs/heads/") {
+            (CommitReferenceKind::LocalBranch, name)
+        } else if let Some(name) = full_name.strip_prefix("refs/remotes/") {
+            (CommitReferenceKind::RemoteBranch, name)
+        } else if let Some(name) = full_name.strip_prefix("refs/tags/") {
+            (CommitReferenceKind::Tag, name)
+        } else {
+            continue;
+        };
+        let target = match kind {
+            CommitReferenceKind::Tag => reference
+                .peel(ObjectType::Commit)
+                .ok()
+                .map(|commit| commit.id()),
+            _ => reference.target().or_else(|| {
+                reference
+                    .resolve()
+                    .ok()
+                    .and_then(|resolved| resolved.target())
+            }),
+        };
+        if let Some(target) = target
+            && visible_oids.contains(&target)
         {
-            result.entry(commit.id()).or_default().push(name.to_owned());
+            result.entry(target).or_default().push(CommitReference {
+                name: name.to_owned(),
+                full_name: full_name.to_owned(),
+                kind,
+            });
         }
     }
+    if let Ok(head) = repo.head()
+        && let Ok(commit) = head.peel(ObjectType::Commit)
+        && visible_oids.contains(&commit.id())
+    {
+        result
+            .entry(commit.id())
+            .or_default()
+            .push(CommitReference {
+                name: "HEAD".to_owned(),
+                full_name: "HEAD".to_owned(),
+                kind: CommitReferenceKind::Head,
+            });
+    }
+    for references in result.values_mut() {
+        references.sort_by_cached_key(|reference| {
+            (
+                reference_rank(&reference.kind),
+                reference.name.to_lowercase(),
+            )
+        });
+        references.dedup_by(|left, right| left.full_name == right.full_name);
+    }
     Ok(result)
+}
+
+fn reference_rank(kind: &CommitReferenceKind) -> u8 {
+    match kind {
+        CommitReferenceKind::Head => 0,
+        CommitReferenceKind::LocalBranch => 1,
+        CommitReferenceKind::RemoteBranch => 2,
+        CommitReferenceKind::Tag => 3,
+    }
 }
 
 fn assign_graph_lanes(commits: &mut [CommitSummary]) {
@@ -718,6 +822,148 @@ pub fn create_commit(path: String, message: String) -> Result<OperationResult, S
         None,
         &[],
     )
+}
+
+pub fn create_tag(
+    path: String,
+    target_oid: String,
+    name: String,
+    annotated: bool,
+    message: Option<String>,
+) -> Result<OperationResult, String> {
+    let repo = Repository::discover(&path).map_err(format_git_error)?;
+    find_commit(&repo, &target_oid)?;
+    validate_tag_name(&path, &name)?;
+    let mut args = vec!["tag".to_owned()];
+    if annotated {
+        let message = message
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| "An annotated tag message is required.".to_owned())?;
+        args.extend(["-a".to_owned(), name, target_oid, "-m".to_owned(), message]);
+    } else {
+        args.extend([name, target_oid]);
+    }
+    run_git(&path, args, None, &[])
+}
+
+pub fn checkout_commit(path: String, oid: String) -> Result<OperationResult, String> {
+    let repo = Repository::discover(&path).map_err(format_git_error)?;
+    find_commit(&repo, &oid)?;
+    ensure_no_operation_in_progress(&repo)?;
+    run_git(
+        &path,
+        vec!["switch".to_owned(), "--detach".to_owned(), oid],
+        None,
+        &[],
+    )
+}
+
+pub fn cherry_pick_commit(
+    path: String,
+    oid: String,
+    mainline_parent: Option<u32>,
+) -> Result<OperationResult, String> {
+    let repo = Repository::discover(&path).map_err(format_git_error)?;
+    let commit = find_commit(&repo, &oid)?;
+    ensure_no_operation_in_progress(&repo)?;
+    ensure_clean_tracked(&repo)?;
+    validate_mainline(&commit, mainline_parent)?;
+    let mut args = vec!["cherry-pick".to_owned()];
+    if let Some(parent) = mainline_parent {
+        args.extend(["-m".to_owned(), parent.to_string()]);
+    }
+    args.push(oid);
+    run_git(&path, args, None, &[])
+}
+
+pub fn control_cherry_pick(
+    path: String,
+    action: SequenceControl,
+) -> Result<OperationResult, String> {
+    control_sequence(&path, "cherry-pick", action)
+}
+
+pub fn revert_commit(
+    path: String,
+    oid: String,
+    mainline_parent: Option<u32>,
+) -> Result<OperationResult, String> {
+    let repo = Repository::discover(&path).map_err(format_git_error)?;
+    let commit = find_commit(&repo, &oid)?;
+    ensure_no_operation_in_progress(&repo)?;
+    ensure_clean_tracked(&repo)?;
+    validate_mainline(&commit, mainline_parent)?;
+    let mut args = vec!["revert".to_owned(), "--no-edit".to_owned()];
+    if let Some(parent) = mainline_parent {
+        args.extend(["-m".to_owned(), parent.to_string()]);
+    }
+    args.push(oid);
+    run_git(&path, args, None, &[])
+}
+
+pub fn control_revert(path: String, action: SequenceControl) -> Result<OperationResult, String> {
+    control_sequence(&path, "revert", action)
+}
+
+pub fn preview_reset(path: String, target_oid: String) -> Result<ResetPreview, String> {
+    let repo = Repository::discover(&path).map_err(format_git_error)?;
+    build_reset_preview(&repo, &target_oid)
+}
+
+pub fn reset_to_commit(
+    path: String,
+    target_oid: String,
+    mode: ResetMode,
+    expected_fingerprint: String,
+    branch_confirmation: Option<String>,
+) -> Result<OperationResult, String> {
+    let repo = Repository::discover(&path).map_err(format_git_error)?;
+    let preview = build_reset_preview(&repo, &target_oid)?;
+    if preview.fingerprint != expected_fingerprint {
+        return Err("The repository changed after the reset preview. Review it again.".to_owned());
+    }
+    if mode == ResetMode::Hard
+        && branch_confirmation.as_deref() != Some(preview.current_branch.as_str())
+    {
+        return Err("Type the current branch name to confirm the hard reset.".to_owned());
+    }
+
+    let mut recycled = Vec::new();
+    if mode == ResetMode::Hard {
+        for relative in &preview.untracked_collisions {
+            let target = safe_worktree_path(&repo, relative)?;
+            if target.exists() {
+                trash::delete(&target).map_err(|error| {
+                    format!("Could not move {relative} to the Recycle Bin: {error}")
+                })?;
+                recycled.push(relative.clone());
+            }
+        }
+    }
+
+    let option = match mode {
+        ResetMode::Soft => "--soft",
+        ResetMode::Mixed => "--mixed",
+        ResetMode::Hard => "--hard",
+    };
+    let mut result = run_git(
+        &path,
+        vec!["reset".to_owned(), option.to_owned(), target_oid],
+        None,
+        &[],
+    )?;
+    if !recycled.is_empty() {
+        let note = format!(
+            "Moved to the Recycle Bin before reset:\n{}",
+            recycled.join("\n")
+        );
+        if result.stdout.trim().is_empty() {
+            result.stdout = note;
+        } else {
+            result.stdout.push_str(&format!("\n{note}"));
+        }
+    }
+    Ok(result)
 }
 
 pub fn clone_repository(url: String, target: String) -> Result<OperationResult, String> {
@@ -866,6 +1112,9 @@ pub fn rebase_branch(
     upstream: String,
     onto: Option<String>,
 ) -> Result<OperationResult, String> {
+    let repo = Repository::discover(&path).map_err(format_git_error)?;
+    ensure_no_operation_in_progress(&repo)?;
+    ensure_clean_tracked(&repo)?;
     validate_ref_name(&upstream)?;
     let args = if let Some(onto) = onto {
         validate_ref_name(&onto)?;
@@ -1338,6 +1587,201 @@ fn select_hunk(patch: &str, selected: usize) -> Result<String, String> {
         .get(selected)
         .ok_or_else(|| "The selected hunk no longer exists.".to_owned())?;
     Ok(format!("{header}{hunk}"))
+}
+
+fn find_commit<'repo>(repo: &'repo Repository, oid: &str) -> Result<git2::Commit<'repo>, String> {
+    let oid = Oid::from_str(oid).map_err(format_git_error)?;
+    repo.find_commit(oid).map_err(format_git_error)
+}
+
+fn ensure_no_operation_in_progress(repo: &Repository) -> Result<(), String> {
+    if repo.state() == GitRepositoryState::Clean {
+        Ok(())
+    } else {
+        Err("Finish or abort the current Git operation first.".to_owned())
+    }
+}
+
+fn ensure_clean_tracked(repo: &Repository) -> Result<(), String> {
+    let dirty = collect_status(repo)?.into_iter().any(|file| {
+        !file.untracked
+            && (file.conflicted
+                || file.staged != ChangeKind::None
+                || file.unstaged != ChangeKind::None)
+    });
+    if dirty {
+        Err("Commit or stash tracked changes before starting this operation.".to_owned())
+    } else {
+        Ok(())
+    }
+}
+
+fn validate_mainline(
+    commit: &git2::Commit<'_>,
+    mainline_parent: Option<u32>,
+) -> Result<(), String> {
+    let count = commit.parent_count();
+    if count > 1 {
+        match mainline_parent {
+            Some(parent) if parent > 0 && parent as usize <= count => Ok(()),
+            _ => Err(format!(
+                "Choose a mainline parent between 1 and {count} for this merge commit."
+            )),
+        }
+    } else if mainline_parent.is_some() {
+        Err("A mainline parent is only valid for a merge commit.".to_owned())
+    } else {
+        Ok(())
+    }
+}
+
+fn control_sequence(
+    path: &str,
+    operation: &str,
+    action: SequenceControl,
+) -> Result<OperationResult, String> {
+    let option = match action {
+        SequenceControl::Continue => "--continue",
+        SequenceControl::Skip => "--skip",
+        SequenceControl::Abort => "--abort",
+    };
+    run_git(
+        path,
+        vec![
+            "-c".to_owned(),
+            "core.editor=true".to_owned(),
+            operation.to_owned(),
+            option.to_owned(),
+        ],
+        None,
+        &[],
+    )
+}
+
+fn validate_tag_name(path: &str, name: &str) -> Result<(), String> {
+    if name.trim().is_empty() || name.starts_with('-') || name.contains('\0') {
+        return Err("Invalid tag name.".to_owned());
+    }
+    let output = run_git_capture(
+        path,
+        vec!["check-ref-format".to_owned(), format!("refs/tags/{name}")],
+        &[],
+    )?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err("Invalid tag name.".to_owned())
+    }
+}
+
+fn build_reset_preview(repo: &Repository, target_oid: &str) -> Result<ResetPreview, String> {
+    ensure_no_operation_in_progress(repo)?;
+    let head = repo.head().map_err(format_git_error)?;
+    if !head.is_branch() {
+        return Err("Reset requires a checked-out local branch.".to_owned());
+    }
+    let current_branch = head.shorthand().map_err(format_git_error)?.to_owned();
+    let head_commit = head.peel_to_commit().map_err(format_git_error)?;
+    let target = find_commit(repo, target_oid)?;
+    let target_tree = target.tree().map_err(format_git_error)?;
+
+    let mut walk = repo.revwalk().map_err(format_git_error)?;
+    walk.set_sorting(Sort::TOPOLOGICAL | Sort::TIME)
+        .map_err(format_git_error)?;
+    walk.push(head_commit.id()).map_err(format_git_error)?;
+    walk.hide(target.id()).map_err(format_git_error)?;
+    let mut outgoing_commits = Vec::new();
+    for oid in walk {
+        let commit = repo
+            .find_commit(oid.map_err(format_git_error)?)
+            .map_err(format_git_error)?;
+        let value = commit.id().to_string();
+        outgoing_commits.push(ResetCommit {
+            short_oid: value[..8].to_owned(),
+            oid: value,
+            summary: commit
+                .summary()
+                .ok()
+                .flatten()
+                .unwrap_or("(no message)")
+                .to_owned(),
+        });
+    }
+
+    let status = collect_status(repo)?;
+    let mut tracked_paths = status
+        .iter()
+        .filter(|file| !file.untracked)
+        .map(|file| file.path.clone())
+        .collect::<Vec<_>>();
+    tracked_paths.sort();
+    tracked_paths.dedup();
+    let mut untracked_collisions = status
+        .iter()
+        .filter(|file| file.untracked)
+        .filter_map(|file| untracked_collision_root(&target_tree, &file.path))
+        .collect::<Vec<_>>();
+    untracked_collisions.sort();
+    untracked_collisions.dedup();
+
+    let mut hasher = Sha256::new();
+    hasher.update(head_commit.id().as_bytes());
+    hasher.update(target.id().as_bytes());
+    hasher.update(current_branch.as_bytes());
+    for file in &status {
+        hasher.update(file.path.as_bytes());
+        hasher.update(format!(
+            "{:?}:{:?}:{}",
+            file.staged, file.unstaged, file.conflicted
+        ));
+    }
+    for args in [
+        vec!["diff".to_owned(), "--binary".to_owned()],
+        vec![
+            "diff".to_owned(),
+            "--cached".to_owned(),
+            "--binary".to_owned(),
+        ],
+    ] {
+        let output = run_git_capture(
+            &display_path(repo.workdir().unwrap_or(repo.path())),
+            args,
+            &[],
+        )?;
+        hasher.update(output.stdout);
+    }
+
+    Ok(ResetPreview {
+        current_branch,
+        target_oid: target.id().to_string(),
+        outgoing_commits,
+        tracked_paths,
+        untracked_collisions,
+        fingerprint: format!("{:x}", hasher.finalize()),
+    })
+}
+
+fn untracked_collision_root(tree: &git2::Tree<'_>, relative: &str) -> Option<String> {
+    let path = Path::new(relative);
+    let components = path
+        .components()
+        .filter_map(|component| match component {
+            Component::Normal(value) => Some(value),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let mut current = PathBuf::new();
+    for (index, component) in components.iter().enumerate() {
+        current.push(component);
+        let Ok(entry) = tree.get_path(&current) else {
+            return None;
+        };
+        let is_last = index + 1 == components.len();
+        if is_last || entry.kind() != Some(ObjectType::Tree) {
+            return Some(display_path(current));
+        }
+    }
+    None
 }
 
 fn validate_ref_name(name: &str) -> Result<(), String> {

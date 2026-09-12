@@ -7,7 +7,7 @@ import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `GitError`, `OperationEvent`, `OperationPhase`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
 
 class BranchInfo {
   final String name;
@@ -141,6 +141,32 @@ class CommitPage {
           nextOffset == other.nextOffset;
 }
 
+class CommitReference {
+  final String name;
+  final String fullName;
+  final CommitReferenceKind kind;
+
+  const CommitReference({
+    required this.name,
+    required this.fullName,
+    required this.kind,
+  });
+
+  @override
+  int get hashCode => name.hashCode ^ fullName.hashCode ^ kind.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CommitReference &&
+          runtimeType == other.runtimeType &&
+          name == other.name &&
+          fullName == other.fullName &&
+          kind == other.kind;
+}
+
+enum CommitReferenceKind { head, localBranch, remoteBranch, tag }
+
 class CommitSummary {
   final String oid;
   final String shortOid;
@@ -149,7 +175,7 @@ class CommitSummary {
   final String authorEmail;
   final PlatformInt64 authoredAt;
   final List<String> parentOids;
-  final List<String> references;
+  final List<CommitReference> references;
   final GraphLane lane;
 
   const CommitSummary({
@@ -701,6 +727,73 @@ class RepositoryWatchEvent {
           paths == other.paths;
 }
 
+class ResetCommit {
+  final String oid;
+  final String shortOid;
+  final String summary;
+
+  const ResetCommit({
+    required this.oid,
+    required this.shortOid,
+    required this.summary,
+  });
+
+  @override
+  int get hashCode => oid.hashCode ^ shortOid.hashCode ^ summary.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ResetCommit &&
+          runtimeType == other.runtimeType &&
+          oid == other.oid &&
+          shortOid == other.shortOid &&
+          summary == other.summary;
+}
+
+enum ResetMode { soft, mixed, hard }
+
+class ResetPreview {
+  final String currentBranch;
+  final String targetOid;
+  final List<ResetCommit> outgoingCommits;
+  final List<String> trackedPaths;
+  final List<String> untrackedCollisions;
+  final String fingerprint;
+
+  const ResetPreview({
+    required this.currentBranch,
+    required this.targetOid,
+    required this.outgoingCommits,
+    required this.trackedPaths,
+    required this.untrackedCollisions,
+    required this.fingerprint,
+  });
+
+  @override
+  int get hashCode =>
+      currentBranch.hashCode ^
+      targetOid.hashCode ^
+      outgoingCommits.hashCode ^
+      trackedPaths.hashCode ^
+      untrackedCollisions.hashCode ^
+      fingerprint.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ResetPreview &&
+          runtimeType == other.runtimeType &&
+          currentBranch == other.currentBranch &&
+          targetOid == other.targetOid &&
+          outgoingCommits == other.outgoingCommits &&
+          trackedPaths == other.trackedPaths &&
+          untrackedCollisions == other.untrackedCollisions &&
+          fingerprint == other.fingerprint;
+}
+
+enum SequenceControl { continue_, skip, abort }
+
 class StashEntry {
   final int index;
   final String message;
@@ -764,4 +857,28 @@ class UpdateStatus {
           releaseNotesMarkdown == other.releaseNotesMarkdown &&
           downloadSize == other.downloadSize &&
           message == other.message;
+}
+
+class WorkingTreeSnapshot {
+  final BigInt generation;
+  final RepositoryState state;
+  final List<FileChange> files;
+
+  const WorkingTreeSnapshot({
+    required this.generation,
+    required this.state,
+    required this.files,
+  });
+
+  @override
+  int get hashCode => generation.hashCode ^ state.hashCode ^ files.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is WorkingTreeSnapshot &&
+          runtimeType == other.runtimeType &&
+          generation == other.generation &&
+          state == other.state &&
+          files == other.files;
 }

@@ -1,9 +1,13 @@
 use rust_lib_gitfront_preview::api::git::{
-    apply_hunk, clone_repository, control_merge, create_branch, create_commit, fetch_all,
-    get_worktree_diff, list_commits, load_conflict, merge_branch, open_repository, push_current,
-    stage_paths, stash_apply, stash_save, switch_branch,
+    apply_hunk, checkout_commit, cherry_pick_commit, clone_repository, compare_commits,
+    control_cherry_pick, control_merge, control_revert, create_branch, create_commit, create_tag,
+    fetch_all, get_worktree_diff, list_commits, load_conflict, merge_branch, open_repository,
+    preview_reset, push_current, refresh_working_tree, reset_to_commit, revert_commit, stage_paths,
+    stash_apply, stash_save, switch_branch,
 };
-use rust_lib_gitfront_preview::api::models::{ChangeKind, MergeControl, RepositoryState};
+use rust_lib_gitfront_preview::api::models::{
+    ChangeKind, CommitReferenceKind, MergeControl, RepositoryState, ResetMode, SequenceControl,
+};
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -22,6 +26,22 @@ fn git(directory: &Path, arguments: &[&str]) {
         arguments,
         String::from_utf8_lossy(&output.stderr)
     );
+}
+
+fn git_text(directory: &Path, arguments: &[&str]) -> String {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(directory)
+        .args(arguments)
+        .output()
+        .expect("git starts");
+    assert!(
+        output.status.success(),
+        "git {:?} failed: {}",
+        arguments,
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8_lossy(&output.stdout).trim().to_owned()
 }
 
 fn repository() -> TempDir {
@@ -68,6 +88,21 @@ fn reads_diff_stages_and_commits() {
     let page = list_commits(path, 0, 200).expect("history");
     assert_eq!(page.commits.len(), 2);
     assert_eq!(page.commits[0].summary, "update notes");
+}
+
+#[test]
+fn refreshes_only_working_tree_data_for_file_events() {
+    let directory = repository();
+    let path = directory.path().to_string_lossy().into_owned();
+    let before = open_repository(path.clone()).expect("initial snapshot");
+    fs::write(directory.path().join("notes.txt"), "fast refresh\n").expect("modify fixture");
+
+    let working_tree = refresh_working_tree(path).expect("working tree snapshot");
+
+    assert!(working_tree.generation > before.generation);
+    assert_eq!(working_tree.state, RepositoryState::Clean);
+    assert_eq!(working_tree.files.len(), 1);
+    assert_eq!(working_tree.files[0].unstaged, ChangeKind::Modified);
 }
 
 #[test]
@@ -226,4 +261,196 @@ fn clones_and_pushes_to_a_local_remote() {
         String::from_utf8_lossy(&output.stdout).trim(),
         "remote update"
     );
+}
+
+#[test]
+fn classifies_commit_references_and_compares_commits() {
+    let directory = repository();
+    let path = directory.path().to_string_lossy().into_owned();
+    let first_oid = git_text(directory.path(), &["rev-parse", "HEAD"]);
+    git(directory.path(), &["branch", "feature/readme"]);
+    git(
+        directory.path(),
+        &["update-ref", "refs/remotes/upstream/main", "HEAD"],
+    );
+    assert!(
+        create_tag(
+            path.clone(),
+            first_oid.clone(),
+            "v0.1.0".to_owned(),
+            false,
+            None,
+        )
+        .unwrap()
+        .success
+    );
+    assert!(
+        create_tag(
+            path.clone(),
+            first_oid.clone(),
+            "v0.1.0-annotated".to_owned(),
+            true,
+            Some("first release".to_owned()),
+        )
+        .unwrap()
+        .success
+    );
+
+    let page = list_commits(path.clone(), 0, 200).expect("history with refs");
+    let references = &page.commits[0].references;
+    assert_eq!(references[0].kind, CommitReferenceKind::Head);
+    assert!(references.iter().any(|reference| {
+        reference.kind == CommitReferenceKind::LocalBranch && reference.name == "main"
+    }));
+    assert!(references.iter().any(|reference| {
+        reference.kind == CommitReferenceKind::RemoteBranch && reference.name == "upstream/main"
+    }));
+    assert_eq!(
+        references
+            .iter()
+            .filter(|reference| reference.kind == CommitReferenceKind::Tag)
+            .count(),
+        2
+    );
+
+    fs::write(directory.path().join("notes.txt"), "one\ntwo changed\n")
+        .expect("second commit fixture");
+    git(directory.path(), &["commit", "-am", "second"]);
+    let second_oid = git_text(directory.path(), &["rev-parse", "HEAD"]);
+    let comparison = compare_commits(path, first_oid, second_oid).expect("comparison");
+    assert!(!comparison.files.is_empty());
+    assert!(
+        comparison.files[0]
+            .hunks
+            .iter()
+            .flat_map(|hunk| &hunk.lines)
+            .any(|line| line.content.contains("two changed"))
+    );
+}
+
+#[test]
+fn cherry_picks_reverts_and_checks_out_commits() {
+    let directory = repository();
+    let path = directory.path().to_string_lossy().into_owned();
+    let initial_oid = git_text(directory.path(), &["rev-parse", "HEAD"]);
+    git(directory.path(), &["switch", "-c", "feature"]);
+    fs::write(directory.path().join("feature.txt"), "feature\n").expect("feature fixture");
+    git(directory.path(), &["add", "feature.txt"]);
+    git(directory.path(), &["commit", "-m", "feature"]);
+    let feature_oid = git_text(directory.path(), &["rev-parse", "HEAD"]);
+    git(directory.path(), &["switch", "main"]);
+
+    let picked = cherry_pick_commit(path.clone(), feature_oid, None).expect("cherry-pick");
+    assert!(picked.success, "{}", picked.stderr);
+    assert!(directory.path().join("feature.txt").exists());
+    let picked_oid = git_text(directory.path(), &["rev-parse", "HEAD"]);
+    let reverted = revert_commit(path.clone(), picked_oid, None).expect("revert");
+    assert!(reverted.success, "{}", reverted.stderr);
+    assert!(!directory.path().join("feature.txt").exists());
+
+    let checked_out = checkout_commit(path.clone(), initial_oid).expect("detached checkout");
+    assert!(checked_out.success, "{}", checked_out.stderr);
+    assert!(open_repository(path).unwrap().head_name.is_none());
+}
+
+#[test]
+fn exposes_and_aborts_cherry_pick_conflicts() {
+    let directory = repository();
+    let path = directory.path().to_string_lossy().into_owned();
+    git(directory.path(), &["switch", "-c", "feature"]);
+    fs::write(directory.path().join("notes.txt"), "feature\n").expect("feature change");
+    git(directory.path(), &["commit", "-am", "feature change"]);
+    let feature_oid = git_text(directory.path(), &["rev-parse", "HEAD"]);
+    git(directory.path(), &["switch", "main"]);
+    fs::write(directory.path().join("notes.txt"), "main\n").expect("main change");
+    git(directory.path(), &["commit", "-am", "main change"]);
+
+    let result = cherry_pick_commit(path.clone(), feature_oid, None).expect("cherry-pick starts");
+    assert!(!result.success);
+    assert_eq!(
+        open_repository(path.clone()).unwrap().state,
+        RepositoryState::CherryPick
+    );
+    let aborted = control_cherry_pick(path.clone(), SequenceControl::Abort).expect("abort");
+    assert!(aborted.success, "{}", aborted.stderr);
+    assert_eq!(open_repository(path).unwrap().state, RepositoryState::Clean);
+}
+
+#[test]
+fn previews_and_validates_resets() {
+    let directory = repository();
+    let path = directory.path().to_string_lossy().into_owned();
+    let initial_oid = git_text(directory.path(), &["rev-parse", "HEAD"]);
+    fs::write(directory.path().join("notes.txt"), "second\n").expect("second fixture");
+    git(directory.path(), &["commit", "-am", "second"]);
+
+    let preview = preview_reset(path.clone(), initial_oid.clone()).expect("preview");
+    assert_eq!(preview.current_branch, "main");
+    assert_eq!(preview.outgoing_commits.len(), 1);
+    let reset = reset_to_commit(
+        path.clone(),
+        initial_oid.clone(),
+        ResetMode::Soft,
+        preview.fingerprint,
+        None,
+    )
+    .expect("soft reset");
+    assert!(reset.success, "{}", reset.stderr);
+    assert_eq!(
+        git_text(directory.path(), &["rev-parse", "HEAD"]),
+        initial_oid
+    );
+    assert!(!git_text(directory.path(), &["diff", "--cached", "--name-only"]).is_empty());
+
+    git(directory.path(), &["reset", "--hard", "ORIG_HEAD"]);
+    let target = git_text(directory.path(), &["rev-parse", "HEAD^"]);
+    let stale = preview_reset(path.clone(), target.clone()).expect("stale preview");
+    fs::write(
+        directory.path().join("notes.txt"),
+        "changed after preview\n",
+    )
+    .expect("stale change");
+    let error = reset_to_commit(path, target, ResetMode::Mixed, stale.fingerprint, None)
+        .expect_err("stale preview is rejected");
+    assert!(error.contains("changed after the reset preview"));
+}
+
+#[test]
+fn detects_untracked_paths_that_hard_reset_would_overwrite() {
+    let directory = repository();
+    let path = directory.path().to_string_lossy().into_owned();
+    fs::write(directory.path().join("collision.txt"), "tracked\n").expect("tracked fixture");
+    git(directory.path(), &["add", "collision.txt"]);
+    git(directory.path(), &["commit", "-m", "add collision target"]);
+    let target = git_text(directory.path(), &["rev-parse", "HEAD"]);
+    git(directory.path(), &["rm", "collision.txt"]);
+    git(
+        directory.path(),
+        &["commit", "-m", "remove collision target"],
+    );
+    fs::write(directory.path().join("collision.txt"), "untracked\n").expect("untracked collision");
+
+    let preview = preview_reset(path, target).expect("hard reset preview");
+    assert_eq!(preview.untracked_collisions, vec!["collision.txt"]);
+}
+
+#[test]
+fn exposes_and_aborts_revert_conflicts() {
+    let directory = repository();
+    let path = directory.path().to_string_lossy().into_owned();
+    fs::write(directory.path().join("notes.txt"), "first change\n").expect("first change");
+    git(directory.path(), &["commit", "-am", "first change"]);
+    let first_change = git_text(directory.path(), &["rev-parse", "HEAD"]);
+    fs::write(directory.path().join("notes.txt"), "second change\n").expect("second change");
+    git(directory.path(), &["commit", "-am", "second change"]);
+
+    let result = revert_commit(path.clone(), first_change, None).expect("revert starts");
+    assert!(!result.success);
+    assert_eq!(
+        open_repository(path.clone()).unwrap().state,
+        RepositoryState::Revert
+    );
+    let aborted = control_revert(path.clone(), SequenceControl::Abort).expect("abort revert");
+    assert!(aborted.success, "{}", aborted.stderr);
+    assert_eq!(open_repository(path).unwrap().state, RepositoryState::Clean);
 }

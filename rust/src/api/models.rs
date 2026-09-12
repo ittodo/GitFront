@@ -79,6 +79,13 @@ pub struct RepositorySnapshot {
     pub stashes: Vec<StashEntry>,
 }
 
+#[derive(Clone, Debug)]
+pub struct WorkingTreeSnapshot {
+    pub generation: u64,
+    pub state: RepositoryState,
+    pub files: Vec<FileChange>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DiffLineKind {
     Context,
@@ -129,6 +136,21 @@ pub struct GraphLane {
     pub parent_columns: Vec<u32>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum CommitReferenceKind {
+    Head,
+    LocalBranch,
+    RemoteBranch,
+    Tag,
+}
+
+#[derive(Clone, Debug)]
+pub struct CommitReference {
+    pub name: String,
+    pub full_name: String,
+    pub kind: CommitReferenceKind,
+}
+
 #[derive(Clone, Debug)]
 pub struct CommitSummary {
     pub oid: String,
@@ -138,7 +160,7 @@ pub struct CommitSummary {
     pub author_email: String,
     pub authored_at: i64,
     pub parent_oids: Vec<String>,
-    pub references: Vec<String>,
+    pub references: Vec<CommitReference>,
     pub lane: GraphLane,
 }
 
@@ -262,6 +284,37 @@ pub enum RebaseControl {
     Continue,
     Skip,
     Abort,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SequenceControl {
+    Continue,
+    Skip,
+    Abort,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ResetMode {
+    Soft,
+    Mixed,
+    Hard,
+}
+
+#[derive(Clone, Debug)]
+pub struct ResetCommit {
+    pub oid: String,
+    pub short_oid: String,
+    pub summary: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct ResetPreview {
+    pub current_branch: String,
+    pub target_oid: String,
+    pub outgoing_commits: Vec<ResetCommit>,
+    pub tracked_paths: Vec<String>,
+    pub untracked_collisions: Vec<String>,
+    pub fingerprint: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -56,6 +56,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   CommitPage dco_decode_commit_page(dynamic raw);
 
   @protected
+  CommitReference dco_decode_commit_reference(dynamic raw);
+
+  @protected
+  CommitReferenceKind dco_decode_commit_reference_kind(dynamic raw);
+
+  @protected
   CommitSummary dco_decode_commit_summary(dynamic raw);
 
   @protected
@@ -101,6 +107,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<BranchInfo> dco_decode_list_branch_info(dynamic raw);
 
   @protected
+  List<CommitReference> dco_decode_list_commit_reference(dynamic raw);
+
+  @protected
   List<CommitSummary> dco_decode_list_commit_summary(dynamic raw);
 
   @protected
@@ -129,6 +138,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<RemoteInfo> dco_decode_list_remote_info(dynamic raw);
+
+  @protected
+  List<ResetCommit> dco_decode_list_reset_commit(dynamic raw);
 
   @protected
   List<StashEntry> dco_decode_list_stash_entry(dynamic raw);
@@ -176,6 +188,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   RepositoryWatchEvent dco_decode_repository_watch_event(dynamic raw);
 
   @protected
+  ResetCommit dco_decode_reset_commit(dynamic raw);
+
+  @protected
+  ResetMode dco_decode_reset_mode(dynamic raw);
+
+  @protected
+  ResetPreview dco_decode_reset_preview(dynamic raw);
+
+  @protected
+  SequenceControl dco_decode_sequence_control(dynamic raw);
+
+  @protected
   StashEntry dco_decode_stash_entry(dynamic raw);
 
   @protected
@@ -195,6 +219,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   UpdateStatus dco_decode_update_status(dynamic raw);
+
+  @protected
+  WorkingTreeSnapshot dco_decode_working_tree_snapshot(dynamic raw);
 
   @protected
   AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
@@ -231,6 +258,14 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   CommitPage sse_decode_commit_page(SseDeserializer deserializer);
+
+  @protected
+  CommitReference sse_decode_commit_reference(SseDeserializer deserializer);
+
+  @protected
+  CommitReferenceKind sse_decode_commit_reference_kind(
+    SseDeserializer deserializer,
+  );
 
   @protected
   CommitSummary sse_decode_commit_summary(SseDeserializer deserializer);
@@ -278,6 +313,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<BranchInfo> sse_decode_list_branch_info(SseDeserializer deserializer);
 
   @protected
+  List<CommitReference> sse_decode_list_commit_reference(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<CommitSummary> sse_decode_list_commit_summary(
     SseDeserializer deserializer,
   );
@@ -312,6 +352,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<RemoteInfo> sse_decode_list_remote_info(SseDeserializer deserializer);
+
+  @protected
+  List<ResetCommit> sse_decode_list_reset_commit(SseDeserializer deserializer);
 
   @protected
   List<StashEntry> sse_decode_list_stash_entry(SseDeserializer deserializer);
@@ -363,6 +406,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  ResetCommit sse_decode_reset_commit(SseDeserializer deserializer);
+
+  @protected
+  ResetMode sse_decode_reset_mode(SseDeserializer deserializer);
+
+  @protected
+  ResetPreview sse_decode_reset_preview(SseDeserializer deserializer);
+
+  @protected
+  SequenceControl sse_decode_sequence_control(SseDeserializer deserializer);
+
+  @protected
   StashEntry sse_decode_stash_entry(SseDeserializer deserializer);
 
   @protected
@@ -382,6 +437,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   UpdateStatus sse_decode_update_status(SseDeserializer deserializer);
+
+  @protected
+  WorkingTreeSnapshot sse_decode_working_tree_snapshot(
+    SseDeserializer deserializer,
+  );
 
   @protected
   void sse_encode_AnyhowException(
@@ -424,6 +484,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_commit_page(CommitPage self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_commit_reference(
+    CommitReference self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_commit_reference_kind(
+    CommitReferenceKind self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_commit_summary(CommitSummary self, SseSerializer serializer);
@@ -480,6 +552,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_commit_reference(
+    List<CommitReference> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_commit_summary(
     List<CommitSummary> self,
     SseSerializer serializer,
@@ -527,6 +605,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_list_remote_info(
     List<RemoteInfo> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_reset_commit(
+    List<ResetCommit> self,
     SseSerializer serializer,
   );
 
@@ -594,6 +678,21 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_reset_commit(ResetCommit self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_reset_mode(ResetMode self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_reset_preview(ResetPreview self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_sequence_control(
+    SequenceControl self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_stash_entry(StashEntry self, SseSerializer serializer);
 
   @protected
@@ -613,6 +712,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_update_status(UpdateStatus self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_working_tree_snapshot(
+    WorkingTreeSnapshot self,
+    SseSerializer serializer,
+  );
 }
 
 // Section: wire_class

@@ -7,7 +7,7 @@ import '../frb_generated.dart';
 import 'models.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `assign_graph_lanes`, `build_snapshot`, `cleanup_rebase_session`, `collect_branches`, `collect_remotes`, `collect_stashes`, `collect_status`, `conflict_ours_label`, `conflict_theirs_label`, `convert_diff`, `delta_status`, `display_path`, `format_git_error`, `head_information`, `is_binary`, `map_repository_state`, `next_generation`, `parse_conflict_regions`, `quoted_editor_command`, `read_blob`, `rebase_action_name`, `rebase_session_path`, `redact`, `references_by_oid`, `result_from_output`, `run_git_capture_with_stdin`, `run_git_capture`, `run_git_without_repo`, `run_git`, `safe_relative_path`, `safe_worktree_path`, `sanitize_todo`, `select_hunk`, `sequence_editor_path`, `short_reference`, `staged_kind`, `unstaged_kind`, `validate_rebase_plan`, `validate_ref_name`
+// These functions are ignored because they are not marked as `pub`: `assign_graph_lanes`, `build_reset_preview`, `build_snapshot`, `cleanup_rebase_session`, `collect_branches`, `collect_remotes`, `collect_stashes`, `collect_status`, `conflict_ours_label`, `conflict_theirs_label`, `control_sequence`, `convert_diff`, `delta_status`, `display_path`, `ensure_clean_tracked`, `ensure_no_operation_in_progress`, `find_commit`, `format_git_error`, `head_information`, `is_binary`, `map_repository_state`, `next_generation`, `parse_conflict_regions`, `quoted_editor_command`, `read_blob`, `rebase_action_name`, `rebase_session_path`, `redact`, `reference_rank`, `references_by_oid`, `result_from_output`, `run_git_capture_with_stdin`, `run_git_capture`, `run_git_without_repo`, `run_git`, `safe_relative_path`, `safe_worktree_path`, `sanitize_todo`, `select_hunk`, `sequence_editor_path`, `short_reference`, `staged_kind`, `unstaged_kind`, `untracked_collision_root`, `validate_mainline`, `validate_rebase_plan`, `validate_ref_name`, `validate_tag_name`
 
 Future<String> gitVersion() => RustLib.instance.api.crateApiGitGitVersion();
 
@@ -16,6 +16,9 @@ Future<RepositorySnapshot> openRepository({required String path}) =>
 
 Future<RepositorySnapshot> refreshRepository({required String path}) =>
     RustLib.instance.api.crateApiGitRefreshRepository(path: path);
+
+Future<WorkingTreeSnapshot> refreshWorkingTree({required String path}) =>
+    RustLib.instance.api.crateApiGitRefreshWorkingTree(path: path);
 
 Stream<RepositoryWatchEvent> watchRepository({required String path}) =>
     RustLib.instance.api.crateApiGitWatchRepository(path: path);
@@ -34,6 +37,16 @@ Future<CommitDetail> getCommitDetail({
   required String path,
   required String oid,
 }) => RustLib.instance.api.crateApiGitGetCommitDetail(path: path, oid: oid);
+
+Future<DiffDocument> compareCommits({
+  required String path,
+  required String fromOid,
+  required String toOid,
+}) => RustLib.instance.api.crateApiGitCompareCommits(
+  path: path,
+  fromOid: fromOid,
+  toOid: toOid,
+);
 
 Future<DiffDocument> getWorktreeDiff({
   required String path,
@@ -86,6 +99,80 @@ Future<OperationResult> createCommit({
   required String message,
 }) =>
     RustLib.instance.api.crateApiGitCreateCommit(path: path, message: message);
+
+Future<OperationResult> createTag({
+  required String path,
+  required String targetOid,
+  required String name,
+  required bool annotated,
+  String? message,
+}) => RustLib.instance.api.crateApiGitCreateTag(
+  path: path,
+  targetOid: targetOid,
+  name: name,
+  annotated: annotated,
+  message: message,
+);
+
+Future<OperationResult> checkoutCommit({
+  required String path,
+  required String oid,
+}) => RustLib.instance.api.crateApiGitCheckoutCommit(path: path, oid: oid);
+
+Future<OperationResult> cherryPickCommit({
+  required String path,
+  required String oid,
+  int? mainlineParent,
+}) => RustLib.instance.api.crateApiGitCherryPickCommit(
+  path: path,
+  oid: oid,
+  mainlineParent: mainlineParent,
+);
+
+Future<OperationResult> controlCherryPick({
+  required String path,
+  required SequenceControl action,
+}) => RustLib.instance.api.crateApiGitControlCherryPick(
+  path: path,
+  action: action,
+);
+
+Future<OperationResult> revertCommit({
+  required String path,
+  required String oid,
+  int? mainlineParent,
+}) => RustLib.instance.api.crateApiGitRevertCommit(
+  path: path,
+  oid: oid,
+  mainlineParent: mainlineParent,
+);
+
+Future<OperationResult> controlRevert({
+  required String path,
+  required SequenceControl action,
+}) => RustLib.instance.api.crateApiGitControlRevert(path: path, action: action);
+
+Future<ResetPreview> previewReset({
+  required String path,
+  required String targetOid,
+}) => RustLib.instance.api.crateApiGitPreviewReset(
+  path: path,
+  targetOid: targetOid,
+);
+
+Future<OperationResult> resetToCommit({
+  required String path,
+  required String targetOid,
+  required ResetMode mode,
+  required String expectedFingerprint,
+  String? branchConfirmation,
+}) => RustLib.instance.api.crateApiGitResetToCommit(
+  path: path,
+  targetOid: targetOid,
+  mode: mode,
+  expectedFingerprint: expectedFingerprint,
+  branchConfirmation: branchConfirmation,
+);
 
 Future<OperationResult> cloneRepository({
   required String url,

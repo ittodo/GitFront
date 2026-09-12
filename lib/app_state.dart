@@ -22,6 +22,8 @@ class RepoTabState {
     this.diff,
     this.selectedCommit,
     this.commitDetail,
+    this.commitComparison,
+    this.commitComparisonLabel,
     this.busy = false,
     this.error,
   });
@@ -35,6 +37,8 @@ class RepoTabState {
   final DiffDocument? diff;
   final CommitSummary? selectedCommit;
   final CommitDetail? commitDetail;
+  final DiffDocument? commitComparison;
+  final String? commitComparisonLabel;
   final bool busy;
   final String? error;
 
@@ -53,6 +57,10 @@ class RepoTabState {
     bool clearSelectedCommit = false,
     CommitDetail? commitDetail,
     bool clearCommitDetail = false,
+    DiffDocument? commitComparison,
+    bool clearCommitComparison = false,
+    String? commitComparisonLabel,
+    bool clearCommitComparisonLabel = false,
     bool? busy,
     String? error,
     bool clearError = false,
@@ -73,6 +81,12 @@ class RepoTabState {
       commitDetail: clearCommitDetail
           ? null
           : commitDetail ?? this.commitDetail,
+      commitComparison: clearCommitComparison
+          ? null
+          : commitComparison ?? this.commitComparison,
+      commitComparisonLabel: clearCommitComparisonLabel
+          ? null
+          : commitComparisonLabel ?? this.commitComparisonLabel,
       busy: busy ?? this.busy,
       error: clearError ? null : error ?? this.error,
     );
@@ -325,6 +339,11 @@ class GitFrontController extends Notifier<GitFrontState> {
       final latestIndex = _indexForPath(path);
       if (latestIndex < 0 || !_isLatestRequest(path, requestVersion)) return;
       final latest = state.tabs[latestIndex];
+      final refreshedCommit = page == null || latest.selectedCommit == null
+          ? latest.selectedCommit
+          : page.commits
+                .where((commit) => commit.oid == latest.selectedCommit!.oid)
+                .firstOrNull;
       _updateTab(
         latestIndex,
         latest.copyWith(
@@ -335,7 +354,78 @@ class GitFrontController extends Notifier<GitFrontState> {
           clearSelectedFile: selected == null,
           diff: diff,
           clearDiff: selected == null,
+          selectedCommit: refreshedCommit,
+          clearSelectedCommit:
+              page != null &&
+              latest.selectedCommit != null &&
+              refreshedCommit == null,
+          clearCommitDetail: page != null,
+          clearCommitComparison: page != null,
+          clearCommitComparisonLabel: page != null,
           busy: false,
+        ),
+      );
+    } catch (error) {
+      if (_isLatestRequest(path, requestVersion)) {
+        final index = _indexForPath(path);
+        if (index >= 0) _setError(index, error);
+      }
+    }
+  }
+
+  Future<void> refreshWorkingTree({required String repositoryPath}) async {
+    final initialIndex = _indexForPath(repositoryPath);
+    if (initialIndex < 0) return;
+    final tab = state.tabs[initialIndex];
+    final path = tab.snapshot.workdir;
+    final requestVersion = _startRequest(path);
+    try {
+      final workingTree = await git_api.refreshWorkingTree(path: path);
+      final index = _indexForPath(path);
+      if (index < 0 || !_isLatestRequest(path, requestVersion)) return;
+      final current = state.tabs[index];
+      final selected = current.selectedFile == null
+          ? null
+          : workingTree.files
+                .where((file) => file.path == current.selectedFile!.path)
+                .firstOrNull;
+      DiffDocument? diff;
+      if (selected != null) {
+        diff = await git_api.getWorktreeDiff(
+          path: path,
+          filePath: selected.path,
+          staged: current.selectedFileStaged,
+        );
+      }
+      final latestIndex = _indexForPath(path);
+      if (latestIndex < 0 || !_isLatestRequest(path, requestVersion)) return;
+      final latest = state.tabs[latestIndex];
+      final snapshot = latest.snapshot;
+      _updateTab(
+        latestIndex,
+        latest.copyWith(
+          snapshot: RepositorySnapshot(
+            repositoryPath: snapshot.repositoryPath,
+            workdir: snapshot.workdir,
+            name: snapshot.name,
+            headName: snapshot.headName,
+            headOid: snapshot.headOid,
+            upstream: snapshot.upstream,
+            ahead: snapshot.ahead,
+            behind: snapshot.behind,
+            state: workingTree.state,
+            generation: workingTree.generation,
+            files: workingTree.files,
+            branches: snapshot.branches,
+            remotes: snapshot.remotes,
+            stashes: snapshot.stashes,
+          ),
+          selectedFile: selected,
+          clearSelectedFile: selected == null,
+          diff: diff,
+          clearDiff: selected == null,
+          busy: false,
+          clearError: true,
         ),
       );
     } catch (error) {
@@ -358,6 +448,8 @@ class GitFrontController extends Notifier<GitFrontState> {
         clearDiff: mode == WorkspaceMode.history,
         clearSelectedCommit: mode == WorkspaceMode.changes,
         clearCommitDetail: mode == WorkspaceMode.changes,
+        clearCommitComparison: true,
+        clearCommitComparisonLabel: true,
       ),
     );
   }
@@ -411,6 +503,8 @@ class GitFrontController extends Notifier<GitFrontState> {
         selectedCommit: commit,
         busy: true,
         clearCommitDetail: true,
+        clearCommitComparison: true,
+        clearCommitComparisonLabel: true,
         clearError: true,
       ),
     );
@@ -421,6 +515,63 @@ class GitFrontController extends Notifier<GitFrontState> {
         _updateTab(
           latestIndex,
           state.tabs[latestIndex].copyWith(commitDetail: detail, busy: false),
+        );
+      }
+    } catch (error) {
+      if (_isLatestRequest(path, requestVersion)) {
+        final latestIndex = _indexForPath(path);
+        if (latestIndex >= 0) _setError(latestIndex, error);
+      }
+    }
+  }
+
+  void focusCommit(CommitSummary commit) {
+    final tab = state.activeTab;
+    if (tab == null || tab.selectedCommit?.oid == commit.oid) return;
+    _updateTab(
+      state.activeIndex,
+      tab.copyWith(
+        selectedCommit: commit,
+        clearCommitDetail: true,
+        clearCommitComparison: true,
+        clearCommitComparisonLabel: true,
+      ),
+    );
+  }
+
+  Future<void> compareCommitWithHead(CommitSummary commit) async {
+    final tab = state.activeTab;
+    final headOid = tab?.snapshot.headOid;
+    if (tab == null || headOid == null || headOid == commit.oid) return;
+    final path = tab.snapshot.workdir;
+    final requestVersion = _startRequest(path);
+    final index = _indexForPath(path);
+    _updateTab(
+      index,
+      tab.copyWith(
+        selectedCommit: commit,
+        busy: true,
+        clearCommitDetail: true,
+        clearCommitComparison: true,
+        clearCommitComparisonLabel: true,
+        clearError: true,
+      ),
+    );
+    try {
+      final comparison = await git_api.compareCommits(
+        path: path,
+        fromOid: commit.oid,
+        toOid: headOid,
+      );
+      final latestIndex = _indexForPath(path);
+      if (latestIndex >= 0 && _isLatestRequest(path, requestVersion)) {
+        _updateTab(
+          latestIndex,
+          state.tabs[latestIndex].copyWith(
+            commitComparison: comparison,
+            commitComparisonLabel: '${commit.shortOid} → HEAD',
+            busy: false,
+          ),
         );
       }
     } catch (error) {
@@ -478,7 +629,13 @@ class GitFrontController extends Notifier<GitFrontState> {
     try {
       final result = await operation(repositoryPath);
       _recordResult(label, result);
-      if (!result.success) throw Exception(result.summary);
+      if (!result.success) {
+        await refresh(
+          reloadHistory: reloadHistory,
+          repositoryPath: repositoryPath,
+        );
+        throw Exception(result.summary);
+      }
       await refresh(
         reloadHistory: reloadHistory,
         repositoryPath: repositoryPath,
@@ -634,13 +791,40 @@ class GitFrontController extends Notifier<GitFrontState> {
   void _startWatcher(String path) {
     final key = path.toLowerCase();
     if (_watchers.containsKey(key)) return;
-    _watchers[key] = git_api.watchRepository(path: path).listen((_) {
+    _watchers[key] = git_api.watchRepository(path: path).listen((event) {
       if (state.activeTab?.snapshot.workdir.toLowerCase() == key &&
           state.activeTab?.busy == false) {
-        unawaited(refresh(repositoryPath: path));
+        final fullRefresh =
+            event.paths.isEmpty || event.paths.any(_isGitMetadataPath);
+        final historyChanged = event.paths.any(_isGitHistoryPath);
+        if (fullRefresh) {
+          unawaited(
+            refresh(
+              repositoryPath: path,
+              reloadHistory:
+                  historyChanged &&
+                  state.activeTab?.mode == WorkspaceMode.history,
+            ),
+          );
+        } else {
+          unawaited(refreshWorkingTree(repositoryPath: path));
+        }
       }
     }, onError: (Object error) => _appendLog('File watcher stopped: $error'));
   }
+}
+
+bool _isGitMetadataPath(String path) {
+  final normalized = path.replaceAll('\\', '/').toLowerCase();
+  return normalized == '.git' || normalized.startsWith('.git/');
+}
+
+bool _isGitHistoryPath(String path) {
+  final normalized = path.replaceAll('\\', '/').toLowerCase();
+  return normalized == '.git/head' ||
+      normalized == '.git/packed-refs' ||
+      normalized.startsWith('.git/refs/') ||
+      normalized.startsWith('.git/logs/');
 }
 
 extension _FirstOrNull<T> on Iterable<T> {

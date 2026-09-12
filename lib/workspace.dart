@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 
 import 'app_state.dart';
 import 'l10n.dart';
@@ -329,7 +330,10 @@ class _RepositoryWorkspace extends ConsumerWidget {
             initialLeftWidth: appState.leftPanelWidth,
             initialDetailWidth: appState.detailPanelWidth,
             detailVisible: appState.detailPanelVisible,
-            hasDetail: tab.diff != null || tab.commitDetail != null,
+            hasDetail:
+                tab.diff != null ||
+                tab.commitDetail != null ||
+                tab.commitComparison != null,
             sidebar: sidebar,
             center: center,
             detail: detail,
@@ -704,6 +708,33 @@ class _RepositoryStateBanner extends ConsumerWidget {
       RepositoryState.rebaseInteractive,
       RepositoryState.rebaseMerge,
     }.contains(tab.snapshot.state);
+    final canSkip =
+        isRebase ||
+        tab.snapshot.state == RepositoryState.cherryPick ||
+        tab.snapshot.state == RepositoryState.revert;
+    final canControl =
+        isRebase ||
+        tab.snapshot.state == RepositoryState.merge ||
+        tab.snapshot.state == RepositoryState.cherryPick ||
+        tab.snapshot.state == RepositoryState.revert;
+    final stateLabel = switch (tab.snapshot.state) {
+      RepositoryState.merge => strings.text('Merge 진행 중', 'Merge in progress'),
+      RepositoryState.rebase ||
+      RepositoryState.rebaseInteractive ||
+      RepositoryState.rebaseMerge => strings.text(
+        'Rebase 진행 중',
+        'Rebase in progress',
+      ),
+      RepositoryState.cherryPick => strings.text(
+        'Cherry-pick 진행 중',
+        'Cherry-pick in progress',
+      ),
+      RepositoryState.revert => strings.text(
+        'Revert 진행 중',
+        'Revert in progress',
+      ),
+      _ => tab.snapshot.state.name,
+    };
     Future<void> run(
       String label,
       Future<OperationResult> Function(String) action,
@@ -715,6 +746,33 @@ class _RepositoryStateBanner extends ConsumerWidget {
       }
     }
 
+    Future<OperationResult> control(String path, SequenceControl action) {
+      if (isRebase) {
+        final rebaseAction = switch (action) {
+          SequenceControl.continue_ => RebaseControl.continue_,
+          SequenceControl.skip => RebaseControl.skip,
+          SequenceControl.abort => RebaseControl.abort,
+        };
+        return git_api.controlRebase(path: path, action: rebaseAction);
+      }
+      return switch (tab.snapshot.state) {
+        RepositoryState.cherryPick => git_api.controlCherryPick(
+          path: path,
+          action: action,
+        ),
+        RepositoryState.revert => git_api.controlRevert(
+          path: path,
+          action: action,
+        ),
+        _ => git_api.controlMerge(
+          path: path,
+          action: action == SequenceControl.continue_
+              ? MergeControl.continue_
+              : MergeControl.abort,
+        ),
+      };
+    }
+
     return Material(
       color: Theme.of(context).colorScheme.tertiaryContainer,
       child: Padding(
@@ -723,60 +781,43 @@ class _RepositoryStateBanner extends ConsumerWidget {
           children: [
             const Icon(Icons.warning_amber_rounded, size: 19),
             const SizedBox(width: 8),
-            Expanded(child: Text(tab.snapshot.state.name)),
-            TextButton(
-              onPressed: tab.busy
-                  ? null
-                  : () => unawaited(
-                      run(
-                        'Continue',
-                        isRebase
-                            ? (path) => git_api.controlRebase(
-                                path: path,
-                                action: RebaseControl.continue_,
-                              )
-                            : (path) => git_api.controlMerge(
-                                path: path,
-                                action: MergeControl.continue_,
-                              ),
-                      ),
-                    ),
-              child: Text(strings.continueAction),
-            ),
-            if (isRebase)
+            Expanded(child: Text(stateLabel)),
+            if (canControl)
               TextButton(
                 onPressed: tab.busy
                     ? null
                     : () => unawaited(
                         run(
-                          'Skip rebase commit',
-                          (path) => git_api.controlRebase(
-                            path: path,
-                            action: RebaseControl.skip,
-                          ),
+                          'Continue',
+                          (path) => control(path, SequenceControl.continue_),
+                        ),
+                      ),
+                child: Text(strings.continueAction),
+              ),
+            if (canSkip)
+              TextButton(
+                onPressed: tab.busy
+                    ? null
+                    : () => unawaited(
+                        run(
+                          'Skip commit',
+                          (path) => control(path, SequenceControl.skip),
                         ),
                       ),
                 child: Text(strings.skip),
               ),
-            TextButton(
-              onPressed: tab.busy
-                  ? null
-                  : () => unawaited(
-                      run(
-                        'Abort',
-                        isRebase
-                            ? (path) => git_api.controlRebase(
-                                path: path,
-                                action: RebaseControl.abort,
-                              )
-                            : (path) => git_api.controlMerge(
-                                path: path,
-                                action: MergeControl.abort,
-                              ),
+            if (canControl)
+              TextButton(
+                onPressed: tab.busy
+                    ? null
+                    : () => unawaited(
+                        run(
+                          'Abort',
+                          (path) => control(path, SequenceControl.abort),
+                        ),
                       ),
-                    ),
-              child: Text(strings.abort),
-            ),
+                child: Text(strings.abort),
+              ),
           ],
         ),
       ),
@@ -797,88 +838,17 @@ class _RepositorySidebar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final locals = tab.snapshot.branches
-        .where((branch) => !branch.isRemote)
-        .toList();
-    final remotes = tab.snapshot.branches
-        .where((branch) => branch.isRemote)
-        .toList();
-    final items = <_SidebarListItem>[
-      _SidebarSectionItem(strings.branches, _SidebarSection.branches),
-      ...locals.map(_SidebarBranchItem.new),
-      const _SidebarGapItem(),
-      _SidebarSectionItem(strings.remotes, _SidebarSection.remotes),
-      ...remotes.map(_SidebarRemoteItem.new),
-      const _SidebarGapItem(),
-      _SidebarSectionItem(strings.stashes, _SidebarSection.stashes),
-      if (tab.snapshot.stashes.isEmpty)
-        const _SidebarEmptyItem()
-      else
-        ...tab.snapshot.stashes.map(_SidebarStashItem.new),
-    ];
-    return ListView.builder(
-      key: const ValueKey('virtualized-repository-sidebar'),
-      padding: const EdgeInsets.fromLTRB(8, 8, 8, 16),
-      cacheExtent: 280,
-      itemCount: items.length,
-      itemBuilder: (context, index) => switch (items[index]) {
-        _SidebarSectionItem(:final title, :final section) => _SidebarHeader(
-          title: title,
-          action: switch (section) {
-            _SidebarSection.branches => IconButton(
-              tooltip: strings.createBranch,
-              icon: const Icon(Icons.add, size: 18),
-              onPressed: tab.busy ? null : () => _createBranch(context, ref),
-            ),
-            _SidebarSection.stashes => IconButton(
-              tooltip: strings.stash,
-              icon: const Icon(Icons.add, size: 18),
-              onPressed: tab.busy ? null : () => _saveStash(context, ref),
-            ),
-            _SidebarSection.remotes => null,
-          },
-        ),
-        _SidebarBranchItem(:final branch) => _BranchTile(
-          branch: branch,
-          tab: tab,
-          onTap: branch.isHead || tab.busy
-              ? null
-              : () => _switchBranch(ref, branch),
-          onAction: (action) => _branchAction(context, ref, branch, action),
-        ),
-        _SidebarRemoteItem(:final branch) => ListTile(
-          dense: true,
-          leading: const Icon(Icons.cloud_outlined, size: 16),
-          title: Text(
-            branch.name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-        _SidebarStashItem(:final stash) => ListTile(
-          dense: true,
-          leading: CircleAvatar(radius: 11, child: Text('${stash.index}')),
-          title: Text(
-            stash.message,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-          onTap: () => _showStash(context, stash),
-          trailing: PopupMenuButton<String>(
-            onSelected: (action) => _stashAction(context, ref, stash, action),
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'apply', child: Text('Apply')),
-              PopupMenuItem(value: 'pop', child: Text('Pop')),
-              PopupMenuItem(value: 'drop', child: Text('Drop…')),
-            ],
-          ),
-        ),
-        _SidebarGapItem() => const SizedBox(height: 10),
-        _SidebarEmptyItem() => const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          child: Text('—'),
-        ),
-      },
+    return _VirtualSidebarList(
+      strings: strings,
+      tab: tab,
+      onCreateBranch: () => _createBranch(context, ref),
+      onSaveStash: () => _saveStash(context, ref),
+      onSwitchBranch: (branch) => _switchBranch(ref, branch),
+      onBranchAction: (branch, action) =>
+          _branchAction(context, ref, branch, action),
+      onShowStash: (stash) => _showStash(context, stash),
+      onStashAction: (stash, action) =>
+          _stashAction(context, ref, stash, action),
     );
   }
 
@@ -1108,6 +1078,160 @@ class _SidebarEmptyItem extends _SidebarListItem {
   const _SidebarEmptyItem();
 }
 
+typedef _BranchActionCallback = void Function(BranchInfo branch, String action);
+typedef _StashActionCallback = void Function(StashEntry stash, String action);
+
+class _VirtualSidebarList extends StatefulWidget {
+  const _VirtualSidebarList({
+    required this.strings,
+    required this.tab,
+    required this.onCreateBranch,
+    required this.onSaveStash,
+    required this.onSwitchBranch,
+    required this.onBranchAction,
+    required this.onShowStash,
+    required this.onStashAction,
+  });
+
+  final GitFrontStrings strings;
+  final RepoTabState tab;
+  final VoidCallback onCreateBranch;
+  final VoidCallback onSaveStash;
+  final ValueChanged<BranchInfo> onSwitchBranch;
+  final _BranchActionCallback onBranchAction;
+  final ValueChanged<StashEntry> onShowStash;
+  final _StashActionCallback onStashAction;
+
+  @override
+  State<_VirtualSidebarList> createState() => _VirtualSidebarListState();
+}
+
+class _VirtualSidebarListState extends State<_VirtualSidebarList> {
+  late List<_SidebarListItem> _items;
+
+  @override
+  void initState() {
+    super.initState();
+    _items = _buildItems();
+  }
+
+  @override
+  void didUpdateWidget(covariant _VirtualSidebarList oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(
+          oldWidget.tab.snapshot.branches,
+          widget.tab.snapshot.branches,
+        ) ||
+        !identical(
+          oldWidget.tab.snapshot.stashes,
+          widget.tab.snapshot.stashes,
+        ) ||
+        oldWidget.strings.locale.languageCode !=
+            widget.strings.locale.languageCode) {
+      _items = _buildItems();
+    }
+  }
+
+  List<_SidebarListItem> _buildItems() {
+    final locals = <BranchInfo>[];
+    final remotes = <BranchInfo>[];
+    for (final branch in widget.tab.snapshot.branches) {
+      (branch.isRemote ? remotes : locals).add(branch);
+    }
+    return [
+      _SidebarSectionItem(widget.strings.branches, _SidebarSection.branches),
+      ...locals.map(_SidebarBranchItem.new),
+      const _SidebarGapItem(),
+      _SidebarSectionItem(widget.strings.remotes, _SidebarSection.remotes),
+      ...remotes.map(_SidebarRemoteItem.new),
+      const _SidebarGapItem(),
+      _SidebarSectionItem(widget.strings.stashes, _SidebarSection.stashes),
+      if (widget.tab.snapshot.stashes.isEmpty)
+        const _SidebarEmptyItem()
+      else
+        ...widget.tab.snapshot.stashes.map(_SidebarStashItem.new),
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tab = widget.tab;
+    return ListView.builder(
+      key: const ValueKey('virtualized-repository-sidebar'),
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 16),
+      cacheExtent: 180,
+      itemCount: _items.length,
+      itemExtentBuilder: (index, _) => switch (_items[index]) {
+        _SidebarSectionItem() => 34,
+        _SidebarBranchItem(:final branch) =>
+          branch.ahead == 0 && branch.behind == 0 ? 48 : 60,
+        _SidebarRemoteItem() => 48,
+        _SidebarStashItem() => 56,
+        _SidebarGapItem() => 10,
+        _SidebarEmptyItem() => 36,
+      },
+      itemBuilder: (context, index) => switch (_items[index]) {
+        _SidebarSectionItem(:final title, :final section) => _SidebarHeader(
+          title: title,
+          action: switch (section) {
+            _SidebarSection.branches => IconButton(
+              tooltip: widget.strings.createBranch,
+              icon: const Icon(Icons.add, size: 18),
+              onPressed: tab.busy ? null : widget.onCreateBranch,
+            ),
+            _SidebarSection.stashes => IconButton(
+              tooltip: widget.strings.stash,
+              icon: const Icon(Icons.add, size: 18),
+              onPressed: tab.busy ? null : widget.onSaveStash,
+            ),
+            _SidebarSection.remotes => null,
+          },
+        ),
+        _SidebarBranchItem(:final branch) => _BranchTile(
+          branch: branch,
+          tab: tab,
+          onTap: branch.isHead || tab.busy
+              ? null
+              : () => widget.onSwitchBranch(branch),
+          onAction: (action) => widget.onBranchAction(branch, action),
+        ),
+        _SidebarRemoteItem(:final branch) => ListTile(
+          dense: true,
+          leading: const Icon(Icons.cloud_outlined, size: 16),
+          title: Text(
+            branch.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        _SidebarStashItem(:final stash) => ListTile(
+          dense: true,
+          leading: CircleAvatar(radius: 11, child: Text('${stash.index}')),
+          title: Text(
+            stash.message,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          onTap: () => widget.onShowStash(stash),
+          trailing: PopupMenuButton<String>(
+            onSelected: (action) => widget.onStashAction(stash, action),
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'apply', child: Text('Apply')),
+              PopupMenuItem(value: 'pop', child: Text('Pop')),
+              PopupMenuItem(value: 'drop', child: Text('Drop…')),
+            ],
+          ),
+        ),
+        _SidebarGapItem() => const SizedBox.shrink(),
+        _SidebarEmptyItem() => const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: Text('—'),
+        ),
+      },
+    );
+  }
+}
+
 class _ChangesPanel extends ConsumerWidget {
   const _ChangesPanel({
     required this.strings,
@@ -1121,15 +1245,6 @@ class _ChangesPanel extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final conflicts = tab.snapshot.files
-        .where((file) => file.conflicted)
-        .toList();
-    final staged = tab.snapshot.files
-        .where((file) => file.staged != ChangeKind.none && !file.conflicted)
-        .toList();
-    final unstaged = tab.snapshot.files
-        .where((file) => file.unstaged != ChangeKind.none && !file.conflicted)
-        .toList();
     if (tab.snapshot.files.isEmpty) {
       return Center(
         child: Column(
@@ -1142,42 +1257,13 @@ class _ChangesPanel extends ConsumerWidget {
         ),
       );
     }
-    final items = <_ChangeListItem>[];
-    void addGroup(String title, List<FileChange> files, bool staged) {
-      if (files.isEmpty) return;
-      items.add(_ChangeSectionItem(title, files.length));
-      items.addAll(files.map((file) => _ChangeFileItem(file, staged)));
-    }
-
-    addGroup(strings.conflicts, conflicts, false);
-    addGroup(strings.staged, staged, true);
-    addGroup(strings.unstaged, unstaged, false);
     return Column(
       children: [
         Expanded(
-          child: ListView.builder(
-            key: const ValueKey('virtualized-change-list'),
-            cacheExtent: 320,
-            itemCount: items.length,
-            itemBuilder: (context, index) => switch (items[index]) {
-              _ChangeSectionItem(:final title, :final count) => Container(
-                height: 42,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                alignment: Alignment.centerLeft,
-                color: Theme.of(context).colorScheme.surfaceContainerLow,
-                child: Text(
-                  '$title · $count',
-                  style: Theme.of(context).textTheme.labelLarge,
-                ),
-              ),
-              _ChangeFileItem(:final file, :final staged) => _ChangeTile(
-                key: ValueKey('${staged ? 'staged' : 'unstaged'}:${file.path}'),
-                file: file,
-                staged: staged,
-                tab: tab,
-                onError: onError,
-              ),
-            },
+          child: _VirtualChangeList(
+            strings: strings,
+            tab: tab,
+            onError: onError,
           ),
         ),
         const Divider(height: 1),
@@ -1201,6 +1287,97 @@ class _ChangeFileItem extends _ChangeListItem {
   const _ChangeFileItem(this.file, this.staged);
   final FileChange file;
   final bool staged;
+}
+
+class _VirtualChangeList extends StatefulWidget {
+  const _VirtualChangeList({
+    required this.strings,
+    required this.tab,
+    required this.onError,
+  });
+
+  final GitFrontStrings strings;
+  final RepoTabState tab;
+  final ValueChanged<Object> onError;
+
+  @override
+  State<_VirtualChangeList> createState() => _VirtualChangeListState();
+}
+
+class _VirtualChangeListState extends State<_VirtualChangeList> {
+  late List<_ChangeListItem> _items;
+
+  @override
+  void initState() {
+    super.initState();
+    _items = _buildItems();
+  }
+
+  @override
+  void didUpdateWidget(covariant _VirtualChangeList oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.tab.snapshot.files, widget.tab.snapshot.files) ||
+        oldWidget.strings.locale.languageCode !=
+            widget.strings.locale.languageCode) {
+      _items = _buildItems();
+    }
+  }
+
+  List<_ChangeListItem> _buildItems() {
+    final conflicts = <FileChange>[];
+    final staged = <FileChange>[];
+    final unstaged = <FileChange>[];
+    for (final file in widget.tab.snapshot.files) {
+      if (file.conflicted) {
+        conflicts.add(file);
+      } else {
+        if (file.staged != ChangeKind.none) staged.add(file);
+        if (file.unstaged != ChangeKind.none) unstaged.add(file);
+      }
+    }
+    final items = <_ChangeListItem>[];
+    void addGroup(String title, List<FileChange> files, bool isStaged) {
+      if (files.isEmpty) return;
+      items.add(_ChangeSectionItem(title, files.length));
+      items.addAll(files.map((file) => _ChangeFileItem(file, isStaged)));
+    }
+
+    addGroup(widget.strings.conflicts, conflicts, false);
+    addGroup(widget.strings.staged, staged, true);
+    addGroup(widget.strings.unstaged, unstaged, false);
+    return items;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.builder(
+      key: const ValueKey('virtualized-change-list'),
+      cacheExtent: 180,
+      itemCount: _items.length,
+      itemExtentBuilder: (index, _) => switch (_items[index]) {
+        _ChangeSectionItem() => 42,
+        _ChangeFileItem(:final file) => file.oldPath == null ? 52 : 60,
+      },
+      itemBuilder: (context, index) => switch (_items[index]) {
+        _ChangeSectionItem(:final title, :final count) => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          alignment: Alignment.centerLeft,
+          color: Theme.of(context).colorScheme.surfaceContainerLow,
+          child: Text(
+            '$title · $count',
+            style: Theme.of(context).textTheme.labelLarge,
+          ),
+        ),
+        _ChangeFileItem(:final file, :final staged) => _ChangeTile(
+          key: ValueKey('${staged ? 'staged' : 'unstaged'}:${file.path}'),
+          file: file,
+          staged: staged,
+          tab: widget.tab,
+          onError: widget.onError,
+        ),
+      },
+    );
+  }
 }
 
 class _ChangeTile extends ConsumerWidget {
@@ -1472,6 +1649,9 @@ class _HistoryPanel extends ConsumerWidget {
       return const Center(child: Text('No commits'));
     }
     return ListView.builder(
+      key: const ValueKey('virtualized-commit-list'),
+      cacheExtent: 192,
+      itemExtent: 64,
       itemCount: tab.commits.length + (tab.nextOffset == null ? 0 : 1),
       itemBuilder: (context, index) {
         if (index == tab.commits.length) {
@@ -1488,47 +1668,778 @@ class _HistoryPanel extends ConsumerWidget {
           );
         }
         final commit = tab.commits[index];
-        final selected = tab.selectedCommit?.oid == commit.oid;
-        return ListTile(
-          selected: selected,
-          dense: true,
-          leading: _GraphDot(lane: commit.lane),
-          title: Text(
-            commit.summary,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          subtitle: Text(
-            '${commit.authorName}  ·  ${_formatTimestamp(commit.authoredAt.toInt())}',
-          ),
-          trailing: SizedBox(
-            width: 92,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  commit.shortOid,
-                  style: const TextStyle(fontFamily: 'monospace'),
-                ),
-                if (commit.references.isNotEmpty)
-                  Text(
-                    commit.references.join(', '),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.primary,
-                      fontSize: 11,
+        return _CommitTile(
+          key: ValueKey('commit:${commit.oid}'),
+          strings: strings,
+          tab: tab,
+          commit: commit,
+          onError: onError,
+        );
+      },
+    );
+  }
+}
+
+class _CommitTile extends ConsumerStatefulWidget {
+  const _CommitTile({
+    super.key,
+    required this.strings,
+    required this.tab,
+    required this.commit,
+    required this.onError,
+  });
+
+  final GitFrontStrings strings;
+  final RepoTabState tab;
+  final CommitSummary commit;
+  final ValueChanged<Object> onError;
+
+  @override
+  ConsumerState<_CommitTile> createState() => _CommitTileState();
+}
+
+class _CommitTileState extends ConsumerState<_CommitTile> {
+  final _menuController = MenuController();
+  final _focusNode = FocusNode();
+
+  bool get _canMutate =>
+      !widget.tab.busy && widget.tab.snapshot.state == RepositoryState.clean;
+
+  bool get _canMoveBranch =>
+      _canMutate &&
+      widget.tab.snapshot.headName != null &&
+      widget.tab.snapshot.headOid != widget.commit.oid;
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final commit = widget.commit;
+    final strings = widget.strings;
+    final selected = widget.tab.selectedCommit?.oid == commit.oid;
+    final canCompare =
+        !widget.tab.busy &&
+        widget.tab.snapshot.headOid != null &&
+        widget.tab.snapshot.headOid != commit.oid;
+    return MenuAnchor(
+      controller: _menuController,
+      menuChildren: [
+        MenuItemButton(
+          onPressed: _copyHash,
+          child: Text(strings.copyCommitHash),
+        ),
+        MenuItemButton(
+          onPressed: canCompare ? _compareWithHead : null,
+          child: Text(strings.compareWithHead),
+        ),
+        const Divider(height: 1),
+        MenuItemButton(
+          onPressed: _canMutate ? _createBranch : null,
+          child: Text(strings.createBranchHere),
+        ),
+        MenuItemButton(
+          onPressed: _canMutate ? _createTag : null,
+          child: Text(strings.createTagHere),
+        ),
+        MenuItemButton(
+          onPressed: _canMutate ? _checkoutDetached : null,
+          child: Text(strings.checkoutDetached),
+        ),
+        const Divider(height: 1),
+        MenuItemButton(
+          onPressed: _canMutate ? () => _runSequence(false) : null,
+          child: Text(strings.cherryPick),
+        ),
+        MenuItemButton(
+          onPressed: _canMutate ? () => _runSequence(true) : null,
+          child: Text(strings.revertCommit),
+        ),
+        MenuItemButton(
+          onPressed: _canMoveBranch ? _rebaseOntoCommit : null,
+          child: Text(strings.rebaseOntoCommit),
+        ),
+        SubmenuButton(
+          menuChildren: _canMoveBranch
+              ? [
+                  MenuItemButton(
+                    onPressed: () => _resetToCommit(ResetMode.soft),
+                    child: Text(strings.softReset),
+                  ),
+                  MenuItemButton(
+                    onPressed: () => _resetToCommit(ResetMode.mixed),
+                    child: Text(strings.mixedReset),
+                  ),
+                  MenuItemButton(
+                    onPressed: () => _resetToCommit(ResetMode.hard),
+                    child: Text(strings.hardReset),
+                  ),
+                ]
+              : const [],
+          child: Text(strings.resetCurrentBranch),
+        ),
+      ],
+      builder: (context, controller, child) => CallbackShortcuts(
+        bindings: {
+          const SingleActivator(LogicalKeyboardKey.f10, shift: true): () {
+            _focusCommit();
+            controller.open();
+          },
+        },
+        child: Focus(
+          focusNode: _focusNode,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onSecondaryTapDown: (details) {
+              _focusCommit();
+              controller.open(position: details.localPosition);
+            },
+            child: ListTile(
+              selected: selected,
+              dense: true,
+              leading: _GraphDot(lane: commit.lane),
+              title: Row(
+                children: [
+                  if (commit.references.isNotEmpty) ...[
+                    Flexible(
+                      flex: 2,
+                      child: _CommitReferenceStrip(
+                        references: commit.references,
+                        strings: strings,
+                      ),
+                    ),
+                    const SizedBox(width: 7),
+                  ],
+                  Expanded(
+                    flex: 3,
+                    child: Text(
+                      commit.summary,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
-              ],
+                ],
+              ),
+              subtitle: Text(
+                '${commit.authorName}  ·  ${_formatTimestamp(commit.authoredAt.toInt())}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              trailing: SizedBox(
+                width: 128,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Text(
+                      commit.shortOid,
+                      style: const TextStyle(fontFamily: 'monospace'),
+                    ),
+                    SizedBox.square(
+                      dimension: 32,
+                      child: IconButton(
+                        tooltip: strings.commitActions,
+                        padding: EdgeInsets.zero,
+                        icon: const Icon(Icons.more_vert, size: 18),
+                        onPressed: () {
+                          _focusCommit();
+                          controller.open();
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              onTap: () {
+                _focusNode.requestFocus();
+                unawaited(
+                  ref.read(gitFrontProvider.notifier).selectCommit(commit),
+                );
+              },
             ),
           ),
-          onTap: () => unawaited(
-            ref.read(gitFrontProvider.notifier).selectCommit(commit),
+        ),
+      ),
+    );
+  }
+
+  void _focusCommit() {
+    _focusNode.requestFocus();
+    ref.read(gitFrontProvider.notifier).focusCommit(widget.commit);
+  }
+
+  Future<void> _copyHash() async {
+    await Clipboard.setData(ClipboardData(text: widget.commit.oid));
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(widget.strings.hashCopied)));
+  }
+
+  void _compareWithHead() {
+    unawaited(
+      ref.read(gitFrontProvider.notifier).compareCommitWithHead(widget.commit),
+    );
+  }
+
+  Future<void> _run(
+    String label,
+    Future<OperationResult> Function(String) action,
+  ) async {
+    try {
+      await ref
+          .read(gitFrontProvider.notifier)
+          .runOperation(label, action, reloadHistory: true);
+    } catch (error) {
+      widget.onError(error);
+    }
+  }
+
+  Future<void> _createBranch() async {
+    final result = await _showBranchAtCommitDialog(context, widget.strings);
+    if (result == null) return;
+    await _run(
+      'Create branch at ${widget.commit.shortOid}',
+      (path) => git_api.createBranch(
+        path: path,
+        name: result.name,
+        startPoint: widget.commit.oid,
+        checkout: result.checkout,
+      ),
+    );
+  }
+
+  Future<void> _createTag() async {
+    final result = await _showTagDialog(context, widget.strings);
+    if (result == null) return;
+    await _run(
+      'Create tag ${result.name}',
+      (path) => git_api.createTag(
+        path: path,
+        targetOid: widget.commit.oid,
+        name: result.name,
+        annotated: result.annotated,
+        message: result.message,
+      ),
+    );
+  }
+
+  Future<void> _checkoutDetached() async {
+    final confirmed = await _confirmAction(
+      context,
+      strings: widget.strings,
+      title: widget.strings.checkoutDetached,
+      message:
+          '${widget.commit.shortOid} · ${widget.commit.summary}\n\n${widget.strings.detachedHeadWarning}',
+    );
+    if (!confirmed) return;
+    await _run(
+      'Checkout ${widget.commit.shortOid}',
+      (path) => git_api.checkoutCommit(path: path, oid: widget.commit.oid),
+    );
+  }
+
+  Future<void> _runSequence(bool revert) async {
+    final parent = await _selectMainlineParent(
+      context,
+      widget.strings,
+      widget.commit,
+    );
+    if (!mounted) return;
+    if (widget.commit.parentOids.length > 1 && parent == null) return;
+    final title = revert
+        ? widget.strings.revertCommit
+        : widget.strings.cherryPick;
+    final confirmed = await _confirmAction(
+      context,
+      strings: widget.strings,
+      title: title,
+      message: '${widget.commit.shortOid} · ${widget.commit.summary}',
+    );
+    if (!confirmed) return;
+    await _run(
+      revert
+          ? 'Revert ${widget.commit.shortOid}'
+          : 'Cherry-pick ${widget.commit.shortOid}',
+      (path) => revert
+          ? git_api.revertCommit(
+              path: path,
+              oid: widget.commit.oid,
+              mainlineParent: parent,
+            )
+          : git_api.cherryPickCommit(
+              path: path,
+              oid: widget.commit.oid,
+              mainlineParent: parent,
+            ),
+    );
+  }
+
+  Future<void> _rebaseOntoCommit() async {
+    final confirmed = await _confirmAction(
+      context,
+      strings: widget.strings,
+      title: widget.strings.rebaseOntoCommit,
+      message:
+          '${widget.tab.snapshot.headName} → ${widget.commit.shortOid}\n${widget.commit.summary}',
+    );
+    if (!confirmed) return;
+    await _run(
+      'Rebase onto ${widget.commit.shortOid}',
+      (path) => git_api.rebaseBranch(path: path, upstream: widget.commit.oid),
+    );
+  }
+
+  Future<void> _resetToCommit(ResetMode mode) async {
+    try {
+      final preview = await git_api.previewReset(
+        path: widget.tab.snapshot.workdir,
+        targetOid: widget.commit.oid,
+      );
+      if (!mounted) return;
+      final confirmation = await _showResetDialog(
+        context,
+        widget.strings,
+        preview,
+        mode,
+      );
+      if (confirmation == null) return;
+      await _run(
+        '${mode.name} reset to ${widget.commit.shortOid}',
+        (path) => git_api.resetToCommit(
+          path: path,
+          targetOid: widget.commit.oid,
+          mode: mode,
+          expectedFingerprint: preview.fingerprint,
+          branchConfirmation: confirmation.isEmpty ? null : confirmation,
+        ),
+      );
+    } catch (error) {
+      widget.onError(error);
+    }
+  }
+}
+
+class _CommitReferenceStrip extends StatelessWidget {
+  const _CommitReferenceStrip({
+    required this.references,
+    required this.strings,
+  });
+
+  final List<CommitReference> references;
+  final GitFrontStrings strings;
+
+  @override
+  Widget build(BuildContext context) {
+    final description = references
+        .map((reference) {
+          final kind = switch (reference.kind) {
+            CommitReferenceKind.head => 'HEAD',
+            CommitReferenceKind.localBranch => strings.localBranch,
+            CommitReferenceKind.remoteBranch => strings.remoteBranch,
+            CommitReferenceKind.tag => strings.tag,
+          };
+          return '$kind: ${reference.name}';
+        })
+        .join('\n');
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maximumVisible = constraints.maxWidth >= 280
+            ? 3
+            : constraints.maxWidth >= 170
+            ? 2
+            : 1;
+        final visible = references.take(maximumVisible).toList();
+        final hidden = references.length - visible.length;
+        return Tooltip(
+          message: description,
+          child: Semantics(
+            label: description.replaceAll('\n', ', '),
+            child: ClipRect(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final reference in visible) ...[
+                    Flexible(
+                      child: _CommitReferenceBadge(reference: reference),
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+                  if (hidden > 0)
+                    Text(
+                      '+$hidden',
+                      style: Theme.of(context).textTheme.labelSmall,
+                    ),
+                ],
+              ),
+            ),
           ),
         );
       },
+    );
+  }
+}
+
+class _CommitReferenceBadge extends StatelessWidget {
+  const _CommitReferenceBadge({required this.reference});
+
+  final CommitReference reference;
+
+  @override
+  Widget build(BuildContext context) {
+    final (color, icon) = switch (reference.kind) {
+      CommitReferenceKind.head => (Colors.orange, Icons.adjust),
+      CommitReferenceKind.localBranch => (Colors.blue, Icons.call_split),
+      CommitReferenceKind.remoteBranch => (Colors.purple, Icons.cloud_outlined),
+      CommitReferenceKind.tag => (Colors.teal, Icons.sell_outlined),
+    };
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 112),
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(5),
+        border: Border.all(color: color.withValues(alpha: 0.38)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 11, color: color),
+          const SizedBox(width: 3),
+          Flexible(
+            child: Text(
+              reference.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: color,
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+typedef _BranchAtCommitResult = ({String name, bool checkout});
+
+Future<_BranchAtCommitResult?> _showBranchAtCommitDialog(
+  BuildContext context,
+  GitFrontStrings strings,
+) async {
+  final name = TextEditingController();
+  var checkout = false;
+  final result = await showDialog<_BranchAtCommitResult>(
+    context: context,
+    builder: (context) => StatefulBuilder(
+      builder: (context, setState) => AlertDialog(
+        title: Text(strings.createBranchHere),
+        content: SizedBox(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: name,
+                autofocus: true,
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(labelText: strings.branches),
+              ),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                value: checkout,
+                title: Text(
+                  strings.text('만든 브랜치로 전환', 'Switch to the new branch'),
+                ),
+                onChanged: (value) => setState(() => checkout = value ?? false),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(strings.cancel),
+          ),
+          FilledButton(
+            onPressed: name.text.trim().isEmpty
+                ? null
+                : () => Navigator.pop(context, (
+                    name: name.text.trim(),
+                    checkout: checkout,
+                  )),
+            child: Text(strings.confirm),
+          ),
+        ],
+      ),
+    ),
+  );
+  name.dispose();
+  return result;
+}
+
+typedef _TagResult = ({String name, bool annotated, String? message});
+
+Future<_TagResult?> _showTagDialog(
+  BuildContext context,
+  GitFrontStrings strings,
+) async {
+  final name = TextEditingController();
+  final message = TextEditingController();
+  var annotated = true;
+  final result = await showDialog<_TagResult>(
+    context: context,
+    builder: (context) => StatefulBuilder(
+      builder: (context, setState) {
+        final valid =
+            name.text.trim().isNotEmpty &&
+            (!annotated || message.text.trim().isNotEmpty);
+        return AlertDialog(
+          title: Text(strings.createTagHere),
+          content: SizedBox(
+            width: 440,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: name,
+                  autofocus: true,
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(labelText: strings.tagName),
+                ),
+                const SizedBox(height: 12),
+                SegmentedButton<bool>(
+                  showSelectedIcon: false,
+                  segments: [
+                    ButtonSegment(
+                      value: true,
+                      label: Text(strings.annotatedTag),
+                    ),
+                    ButtonSegment(
+                      value: false,
+                      label: Text(strings.lightweightTag),
+                    ),
+                  ],
+                  selected: {annotated},
+                  onSelectionChanged: (value) =>
+                      setState(() => annotated = value.first),
+                ),
+                if (annotated) ...[
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: message,
+                    minLines: 2,
+                    maxLines: 4,
+                    onChanged: (_) => setState(() {}),
+                    decoration: InputDecoration(labelText: strings.tagMessage),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(strings.cancel),
+            ),
+            FilledButton(
+              onPressed: valid
+                  ? () => Navigator.pop(context, (
+                      name: name.text.trim(),
+                      annotated: annotated,
+                      message: annotated ? message.text.trim() : null,
+                    ))
+                  : null,
+              child: Text(strings.confirm),
+            ),
+          ],
+        );
+      },
+    ),
+  );
+  name.dispose();
+  message.dispose();
+  return result;
+}
+
+Future<int?> _selectMainlineParent(
+  BuildContext context,
+  GitFrontStrings strings,
+  CommitSummary commit,
+) {
+  if (commit.parentOids.length <= 1) return Future.value();
+  return showDialog<int>(
+    context: context,
+    builder: (context) => SimpleDialog(
+      title: Text(strings.mainlineParent),
+      children: [
+        for (var index = 0; index < commit.parentOids.length; index++)
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(context, index + 1),
+            child: Text(
+              '${index + 1} · ${commit.parentOids[index].substring(0, 8)}',
+              style: const TextStyle(fontFamily: 'monospace'),
+            ),
+          ),
+      ],
+    ),
+  );
+}
+
+Future<bool> _confirmAction(
+  BuildContext context, {
+  required GitFrontStrings strings,
+  required String title,
+  required String message,
+}) async =>
+    await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: SelectableText(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(strings.cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(strings.confirm),
+          ),
+        ],
+      ),
+    ) ??
+    false;
+
+Future<String?> _showResetDialog(
+  BuildContext context,
+  GitFrontStrings strings,
+  ResetPreview preview,
+  ResetMode mode,
+) async {
+  final confirmation = TextEditingController();
+  final result = await showDialog<String>(
+    context: context,
+    builder: (context) => StatefulBuilder(
+      builder: (context, setState) {
+        final isHard = mode == ResetMode.hard;
+        final valid =
+            !isHard || confirmation.text.trim() == preview.currentBranch;
+        return AlertDialog(
+          title: Text('${strings.resetPreview} · ${mode.name.toUpperCase()}'),
+          content: SizedBox(
+            width: 620,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 520),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SelectableText(
+                      '${preview.currentBranch} → ${preview.targetOid.substring(0, 8)}',
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _ResetPreviewSection(
+                      title: strings.outgoingCommits,
+                      lines: preview.outgoingCommits
+                          .map((item) => '${item.shortOid}  ${item.summary}')
+                          .toList(),
+                      emptyLabel: strings.noItems,
+                    ),
+                    const SizedBox(height: 14),
+                    _ResetPreviewSection(
+                      title: strings.trackedChanges,
+                      lines: preview.trackedPaths,
+                      emptyLabel: strings.noItems,
+                    ),
+                    if (isHard) ...[
+                      const SizedBox(height: 14),
+                      _ResetPreviewSection(
+                        title: strings.recycleBinPaths,
+                        lines: preview.untrackedCollisions,
+                        emptyLabel: strings.noItems,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(strings.typeBranchToConfirm),
+                      const SizedBox(height: 6),
+                      SelectableText(
+                        preview.currentBranch,
+                        style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      TextField(
+                        controller: confirmation,
+                        autofocus: true,
+                        onChanged: (_) => setState(() {}),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(strings.cancel),
+            ),
+            FilledButton(
+              onPressed: valid
+                  ? () => Navigator.pop(
+                      context,
+                      isHard ? confirmation.text.trim() : '',
+                    )
+                  : null,
+              child: Text(strings.confirm),
+            ),
+          ],
+        );
+      },
+    ),
+  );
+  confirmation.dispose();
+  return result;
+}
+
+class _ResetPreviewSection extends StatelessWidget {
+  const _ResetPreviewSection({
+    required this.title,
+    required this.lines,
+    required this.emptyLabel,
+  });
+
+  final String title;
+  final List<String> lines;
+  final String emptyLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: 4),
+        if (lines.isEmpty)
+          Text(emptyLabel)
+        else
+          for (final line in lines)
+            SelectableText(
+              '• $line',
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+            ),
+      ],
     );
   }
 }
@@ -1568,6 +2479,25 @@ class _CommitDetailPane extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final comparison = tab.commitComparison;
+    if (comparison != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(14),
+            child: SelectableText(
+              tab.commitComparisonLabel ?? strings.compareWithHead,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: _DiffViewer(document: comparison, tab: tab, readOnly: true),
+          ),
+        ],
+      );
+    }
     final detail = tab.commitDetail;
     if (detail == null) {
       return tab.busy
@@ -1641,6 +2571,9 @@ class _DiffViewerState extends State<_DiffViewer> {
 
   @override
   Widget build(BuildContext context) {
+    if (items.isEmpty) {
+      return const Center(child: Text('No differences'));
+    }
     return Column(
       children: [
         SizedBox(

@@ -78,6 +78,47 @@ class GitFrontStrings {
   String get externalEditor => text('외부 편집기', 'External editor');
   String get customExecutable => text('실행 파일 경로', 'Executable path');
   String get openExternal => text('외부 편집기로 열기', 'Open in external editor');
+  String get copyCommitHash => text('전체 커밋 해시 복사', 'Copy full commit hash');
+  String get commitActions => text('커밋 작업', 'Commit actions');
+  String get compareWithHead => text('HEAD와 비교', 'Compare with HEAD');
+  String get createBranchHere => text('여기서 브랜치 만들기…', 'Create branch here…');
+  String get createTagHere => text('여기에 태그 만들기…', 'Create tag here…');
+  String get checkoutDetached =>
+      text('이 커밋으로 Checkout…', 'Checkout this commit…');
+  String get cherryPick => 'Cherry-pick…';
+  String get revertCommit => 'Revert…';
+  String get rebaseOntoCommit =>
+      text('현재 브랜치를 이 커밋에 Rebase…', 'Rebase current branch onto this commit…');
+  String get resetCurrentBranch =>
+      text('현재 브랜치를 여기로 Reset', 'Reset current branch here');
+  String get softReset => 'Soft';
+  String get mixedReset => 'Mixed';
+  String get hardReset => 'Hard…';
+  String get tagName => text('태그 이름', 'Tag name');
+  String get tagMessage => text('태그 메시지', 'Tag message');
+  String get annotatedTag => text('Annotated 태그', 'Annotated tag');
+  String get lightweightTag => text('Lightweight 태그', 'Lightweight tag');
+  String get mainlineParent => text('기준 부모', 'Mainline parent');
+  String get detachedHeadWarning => text(
+    '브랜치가 아닌 커밋을 직접 checkout합니다. 새 커밋을 유지하려면 이후 브랜치를 만드세요.',
+    'This checks out the commit without a branch. Create a branch later to keep new commits.',
+  );
+  String get resetPreview => text('Reset 영향 확인', 'Review reset impact');
+  String get outgoingCommits =>
+      text('현재 브랜치에서 벗어나는 커밋', 'Commits leaving the current branch');
+  String get trackedChanges =>
+      text('영향받는 tracked 변경', 'Affected tracked changes');
+  String get recycleBinPaths =>
+      text('휴지통으로 이동할 미추적 경로', 'Untracked paths moved to Recycle Bin');
+  String get noItems => text('없음', 'None');
+  String get typeBranchToConfirm => text(
+    'Hard reset을 실행하려면 현재 브랜치 이름을 입력하세요.',
+    'Type the current branch name to run the hard reset.',
+  );
+  String get hashCopied => text('커밋 해시를 복사했습니다.', 'Commit hash copied.');
+  String get tag => text('태그', 'Tag');
+  String get localBranch => text('로컬 브랜치', 'Local branch');
+  String get remoteBranch => text('원격 브랜치', 'Remote branch');
 }
 
 Locale resolveLocale(BuildContext context, AppLanguage language) {
