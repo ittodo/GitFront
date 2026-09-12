@@ -897,10 +897,10 @@ fn stages_only_selected_lines_from_a_hunk() {
     )
     .expect("discard selected lines");
     assert!(discarded.success, "{}", discarded.stderr);
-    assert_eq!(
-        fs::read_to_string(directory.path().join("notes.txt")).unwrap(),
-        "ONE\ntwo\n"
-    );
+    let contents = fs::read_to_string(directory.path().join("notes.txt"))
+        .expect("read line discard result")
+        .replace("\r\n", "\n");
+    assert_eq!(contents, "ONE\ntwo\n");
 }
 
 #[test]
