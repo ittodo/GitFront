@@ -7,7 +7,7 @@ import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `GitError`, `OperationEvent`, `OperationPhase`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
 
 class BranchInfo {
   final String name;
@@ -56,6 +56,31 @@ class BranchInfo {
           behind == other.behind;
 }
 
+class BranchPage {
+  final List<BranchInfo> branches;
+  final String? nextCursor;
+  final int totalBranches;
+
+  const BranchPage({
+    required this.branches,
+    this.nextCursor,
+    required this.totalBranches,
+  });
+
+  @override
+  int get hashCode =>
+      branches.hashCode ^ nextCursor.hashCode ^ totalBranches.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is BranchPage &&
+          runtimeType == other.runtimeType &&
+          branches == other.branches &&
+          nextCursor == other.nextCursor &&
+          totalBranches == other.totalBranches;
+}
+
 enum ChangeKind {
   none,
   added,
@@ -66,6 +91,147 @@ enum ChangeKind {
   untracked,
   conflicted,
   unreadable,
+}
+
+enum CherryPickApplicability { applicable, alreadyApplied, conflicts }
+
+class CloneOptions {
+  final String url;
+  final String target;
+  final String remoteName;
+  final String? branch;
+  final int? depth;
+  final bool singleBranch;
+  final bool noTags;
+  final bool recurseSubmodules;
+  final bool shallowSubmodules;
+  final bool blobless;
+  final List<String> sparseDirectories;
+
+  const CloneOptions({
+    required this.url,
+    required this.target,
+    required this.remoteName,
+    this.branch,
+    this.depth,
+    required this.singleBranch,
+    required this.noTags,
+    required this.recurseSubmodules,
+    required this.shallowSubmodules,
+    required this.blobless,
+    required this.sparseDirectories,
+  });
+
+  @override
+  int get hashCode =>
+      url.hashCode ^
+      target.hashCode ^
+      remoteName.hashCode ^
+      branch.hashCode ^
+      depth.hashCode ^
+      singleBranch.hashCode ^
+      noTags.hashCode ^
+      recurseSubmodules.hashCode ^
+      shallowSubmodules.hashCode ^
+      blobless.hashCode ^
+      sparseDirectories.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CloneOptions &&
+          runtimeType == other.runtimeType &&
+          url == other.url &&
+          target == other.target &&
+          remoteName == other.remoteName &&
+          branch == other.branch &&
+          depth == other.depth &&
+          singleBranch == other.singleBranch &&
+          noTags == other.noTags &&
+          recurseSubmodules == other.recurseSubmodules &&
+          shallowSubmodules == other.shallowSubmodules &&
+          blobless == other.blobless &&
+          sparseDirectories == other.sparseDirectories;
+}
+
+class CloneResult {
+  final String path;
+  final OperationResult operation;
+  final List<String> warnings;
+
+  const CloneResult({
+    required this.path,
+    required this.operation,
+    required this.warnings,
+  });
+
+  @override
+  int get hashCode => path.hashCode ^ operation.hashCode ^ warnings.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CloneResult &&
+          runtimeType == other.runtimeType &&
+          path == other.path &&
+          operation == other.operation &&
+          warnings == other.warnings;
+}
+
+class CommitCursorPage {
+  final List<CommitSummary> commits;
+  final String? nextCursor;
+  final int totalCommits;
+
+  const CommitCursorPage({
+    required this.commits,
+    this.nextCursor,
+    required this.totalCommits,
+  });
+
+  @override
+  int get hashCode =>
+      commits.hashCode ^ nextCursor.hashCode ^ totalCommits.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CommitCursorPage &&
+          runtimeType == other.runtimeType &&
+          commits == other.commits &&
+          nextCursor == other.nextCursor &&
+          totalCommits == other.totalCommits;
+}
+
+class CommitDefaults {
+  final String template;
+  final String? cleanup;
+  final bool signingEnabled;
+  final String? previousMessage;
+
+  const CommitDefaults({
+    required this.template,
+    this.cleanup,
+    required this.signingEnabled,
+    this.previousMessage,
+  });
+
+  @override
+  int get hashCode =>
+      template.hashCode ^
+      cleanup.hashCode ^
+      signingEnabled.hashCode ^
+      previousMessage.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CommitDefaults &&
+          runtimeType == other.runtimeType &&
+          template == other.template &&
+          cleanup == other.cleanup &&
+          signingEnabled == other.signingEnabled &&
+          previousMessage == other.previousMessage;
 }
 
 class CommitDetail {
@@ -123,6 +289,61 @@ class CommitDetail {
           diff == other.diff;
 }
 
+class CommitOptions {
+  final String? message;
+  final bool amend;
+  final bool signoff;
+  final CommitSigningMode signing;
+  final String? authorName;
+  final String? authorEmail;
+  final String? authoredAt;
+  final bool allowEmpty;
+  final String? fixupTarget;
+  final String? squashTarget;
+
+  const CommitOptions({
+    this.message,
+    required this.amend,
+    required this.signoff,
+    required this.signing,
+    this.authorName,
+    this.authorEmail,
+    this.authoredAt,
+    required this.allowEmpty,
+    this.fixupTarget,
+    this.squashTarget,
+  });
+
+  @override
+  int get hashCode =>
+      message.hashCode ^
+      amend.hashCode ^
+      signoff.hashCode ^
+      signing.hashCode ^
+      authorName.hashCode ^
+      authorEmail.hashCode ^
+      authoredAt.hashCode ^
+      allowEmpty.hashCode ^
+      fixupTarget.hashCode ^
+      squashTarget.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CommitOptions &&
+          runtimeType == other.runtimeType &&
+          message == other.message &&
+          amend == other.amend &&
+          signoff == other.signoff &&
+          signing == other.signing &&
+          authorName == other.authorName &&
+          authorEmail == other.authorEmail &&
+          authoredAt == other.authoredAt &&
+          allowEmpty == other.allowEmpty &&
+          fixupTarget == other.fixupTarget &&
+          squashTarget == other.squashTarget;
+}
+
 class CommitPage {
   final List<CommitSummary> commits;
   final int? nextOffset;
@@ -166,6 +387,8 @@ class CommitReference {
 }
 
 enum CommitReferenceKind { head, localBranch, remoteBranch, tag }
+
+enum CommitSigningMode { useConfig, sign, doNotSign }
 
 class CommitSummary {
   final String oid;
@@ -482,6 +705,139 @@ class FileChange {
           untracked == other.untracked;
 }
 
+class FileChangePage {
+  final List<FileChange> files;
+  final String? nextCursor;
+  final int totalFiles;
+  final int stagedCount;
+  final int unstagedCount;
+  final int conflictCount;
+  final int untrackedCount;
+
+  const FileChangePage({
+    required this.files,
+    this.nextCursor,
+    required this.totalFiles,
+    required this.stagedCount,
+    required this.unstagedCount,
+    required this.conflictCount,
+    required this.untrackedCount,
+  });
+
+  @override
+  int get hashCode =>
+      files.hashCode ^
+      nextCursor.hashCode ^
+      totalFiles.hashCode ^
+      stagedCount.hashCode ^
+      unstagedCount.hashCode ^
+      conflictCount.hashCode ^
+      untrackedCount.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FileChangePage &&
+          runtimeType == other.runtimeType &&
+          files == other.files &&
+          nextCursor == other.nextCursor &&
+          totalFiles == other.totalFiles &&
+          stagedCount == other.stagedCount &&
+          unstagedCount == other.unstagedCount &&
+          conflictCount == other.conflictCount &&
+          untrackedCount == other.untrackedCount;
+}
+
+class GitCapabilities {
+  final String version;
+  final bool supportsRepositorySetup;
+  final bool supportsFixedValueConfig;
+  final bool supportsSparseCheckout;
+
+  const GitCapabilities({
+    required this.version,
+    required this.supportsRepositorySetup,
+    required this.supportsFixedValueConfig,
+    required this.supportsSparseCheckout,
+  });
+
+  @override
+  int get hashCode =>
+      version.hashCode ^
+      supportsRepositorySetup.hashCode ^
+      supportsFixedValueConfig.hashCode ^
+      supportsSparseCheckout.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is GitCapabilities &&
+          runtimeType == other.runtimeType &&
+          version == other.version &&
+          supportsRepositorySetup == other.supportsRepositorySetup &&
+          supportsFixedValueConfig == other.supportsFixedValueConfig &&
+          supportsSparseCheckout == other.supportsSparseCheckout;
+}
+
+class GitConfigEntry {
+  final String key;
+  final String value;
+  final GitConfigScope scope;
+  final String origin;
+  final bool inherited;
+  final bool sensitive;
+
+  const GitConfigEntry({
+    required this.key,
+    required this.value,
+    required this.scope,
+    required this.origin,
+    required this.inherited,
+    required this.sensitive,
+  });
+
+  @override
+  int get hashCode =>
+      key.hashCode ^
+      value.hashCode ^
+      scope.hashCode ^
+      origin.hashCode ^
+      inherited.hashCode ^
+      sensitive.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is GitConfigEntry &&
+          runtimeType == other.runtimeType &&
+          key == other.key &&
+          value == other.value &&
+          scope == other.scope &&
+          origin == other.origin &&
+          inherited == other.inherited &&
+          sensitive == other.sensitive;
+}
+
+enum GitConfigScope { system, global, local, worktree, command, unknown }
+
+class GitConfigSnapshot {
+  final List<GitConfigEntry> entries;
+
+  const GitConfigSnapshot({required this.entries});
+
+  @override
+  int get hashCode => entries.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is GitConfigSnapshot &&
+          runtimeType == other.runtimeType &&
+          entries == other.entries;
+}
+
+enum GitignoreTemplate { none, flutter, rust, node, python, visualStudio }
+
 class GraphLane {
   final int column;
   final Uint32List parentColumns;
@@ -602,6 +958,30 @@ class RebasePlanItem {
           newMessage == other.newMessage;
 }
 
+class RemoteDetails {
+  final String name;
+  final List<String> fetchUrls;
+  final List<String> pushUrls;
+
+  const RemoteDetails({
+    required this.name,
+    required this.fetchUrls,
+    required this.pushUrls,
+  });
+
+  @override
+  int get hashCode => name.hashCode ^ fetchUrls.hashCode ^ pushUrls.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is RemoteDetails &&
+          runtimeType == other.runtimeType &&
+          name == other.name &&
+          fetchUrls == other.fetchUrls &&
+          pushUrls == other.pushUrls;
+}
+
 class RemoteInfo {
   final String name;
   final String? fetchUrl;
@@ -620,6 +1000,65 @@ class RemoteInfo {
           name == other.name &&
           fetchUrl == other.fetchUrl &&
           pushUrl == other.pushUrl;
+}
+
+class RepositoryInitOptions {
+  final String targetPath;
+  final String initialBranch;
+  final bool createReadme;
+  final GitignoreTemplate gitignoreTemplate;
+  final String? originUrl;
+
+  const RepositoryInitOptions({
+    required this.targetPath,
+    required this.initialBranch,
+    required this.createReadme,
+    required this.gitignoreTemplate,
+    this.originUrl,
+  });
+
+  @override
+  int get hashCode =>
+      targetPath.hashCode ^
+      initialBranch.hashCode ^
+      createReadme.hashCode ^
+      gitignoreTemplate.hashCode ^
+      originUrl.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is RepositoryInitOptions &&
+          runtimeType == other.runtimeType &&
+          targetPath == other.targetPath &&
+          initialBranch == other.initialBranch &&
+          createReadme == other.createReadme &&
+          gitignoreTemplate == other.gitignoreTemplate &&
+          originUrl == other.originUrl;
+}
+
+class RepositoryInitResult {
+  final String path;
+  final OperationResult operation;
+  final List<String> warnings;
+
+  const RepositoryInitResult({
+    required this.path,
+    required this.operation,
+    required this.warnings,
+  });
+
+  @override
+  int get hashCode => path.hashCode ^ operation.hashCode ^ warnings.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is RepositoryInitResult &&
+          runtimeType == other.runtimeType &&
+          path == other.path &&
+          operation == other.operation &&
+          warnings == other.warnings;
 }
 
 class RepositorySnapshot {
@@ -691,6 +1130,30 @@ class RepositorySnapshot {
           branches == other.branches &&
           remotes == other.remotes &&
           stashes == other.stashes;
+}
+
+class RepositorySnapshotPage {
+  final RepositorySnapshot snapshot;
+  final FileChangePage changes;
+  final BranchPage branches;
+
+  const RepositorySnapshotPage({
+    required this.snapshot,
+    required this.changes,
+    required this.branches,
+  });
+
+  @override
+  int get hashCode => snapshot.hashCode ^ changes.hashCode ^ branches.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is RepositorySnapshotPage &&
+          runtimeType == other.runtimeType &&
+          snapshot == other.snapshot &&
+          changes == other.changes &&
+          branches == other.branches;
 }
 
 enum RepositoryState {
@@ -794,6 +1257,31 @@ class ResetPreview {
 
 enum SequenceControl { continue_, skip, abort }
 
+class SparseCheckoutState {
+  final bool enabled;
+  final bool coneMode;
+  final List<String> directories;
+
+  const SparseCheckoutState({
+    required this.enabled,
+    required this.coneMode,
+    required this.directories,
+  });
+
+  @override
+  int get hashCode =>
+      enabled.hashCode ^ coneMode.hashCode ^ directories.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SparseCheckoutState &&
+          runtimeType == other.runtimeType &&
+          enabled == other.enabled &&
+          coneMode == other.coneMode &&
+          directories == other.directories;
+}
+
 class StashEntry {
   final int index;
   final String message;
@@ -881,4 +1369,25 @@ class WorkingTreeSnapshot {
           generation == other.generation &&
           state == other.state &&
           files == other.files;
+}
+
+class WorkingTreeSnapshotPage {
+  final WorkingTreeSnapshot snapshot;
+  final FileChangePage changes;
+
+  const WorkingTreeSnapshotPage({
+    required this.snapshot,
+    required this.changes,
+  });
+
+  @override
+  int get hashCode => snapshot.hashCode ^ changes.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is WorkingTreeSnapshotPage &&
+          runtimeType == other.runtimeType &&
+          snapshot == other.snapshot &&
+          changes == other.changes;
 }

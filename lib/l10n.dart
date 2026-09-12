@@ -13,6 +13,7 @@ class GitFrontStrings {
 
   String get appName => 'GitFront Preview';
   String get openRepository => text('저장소 열기', 'Open repository');
+  String get createRepository => text('새 저장소', 'New repository');
   String get cloneRepository => text('저장소 복제', 'Clone repository');
   String get noRepository =>
       text('저장소를 열어 시작하세요', 'Open a repository to get started');
@@ -67,7 +68,38 @@ class GitFrontStrings {
   String get loadMore => text('이전 커밋 더 보기', 'Load older commits');
   String get repoUrl => text('원격 저장소 URL', 'Repository URL');
   String get destination => text('대상 폴더', 'Destination folder');
+  String get initialBranch => text('초기 브랜치', 'Initial branch');
+  String get createReadme => text('README 만들기', 'Create README');
+  String get gitignoreTemplate => text('.gitignore 템플릿', '.gitignore template');
+  String get originUrl => text('origin URL (선택)', 'origin URL (optional)');
+  String get advancedOptions => text('고급 옵션', 'Advanced options');
+  String get remoteName => text('원격 이름', 'Remote name');
+  String get branchOrTag => text('브랜치 또는 태그', 'Branch or tag');
+  String get cloneDepth => text('기록 깊이', 'History depth');
+  String get singleBranch => text('한 브랜치만 복제', 'Clone a single branch');
+  String get noTags => text('태그를 받지 않음', 'Do not fetch tags');
+  String get recurseSubmodules =>
+      text('Submodule 재귀 복제', 'Clone submodules recursively');
+  String get shallowSubmodules =>
+      text('Submodule 기록을 얕게 복제', 'Use shallow submodules');
+  String get bloblessClone =>
+      text('파일 본문은 필요할 때 받기', 'Download file contents on demand');
+  String get sparseDirectories =>
+      text('Sparse 디렉터리 (한 줄에 하나)', 'Sparse directories (one per line)');
+  String get gitSettings => text('Git 설정', 'Git settings');
+  String get repositoryScope => text('현재 저장소', 'This repository');
+  String get globalScope => text('사용자 전역', 'Global');
+  String get advancedConfig => text('고급 설정', 'Advanced config');
+  String get manageRemotes => text('원격 관리', 'Manage remotes');
+  String get sparseCheckout => 'Sparse checkout';
+  String get add => text('추가', 'Add');
+  String get edit => text('수정', 'Edit');
+  String get inherited => text('상속', 'Inherited');
+  String get disable => text('비활성화', 'Disable');
+  String get save => text('저장', 'Save');
   String get recentRepositories => text('최근 저장소', 'Recent repositories');
+  String get dragToReorderRepository =>
+      text('드래그하여 저장소 순서 변경', 'Drag to reorder repositories');
   String get browse => text('찾아보기', 'Browse');
   String get stage => 'Stage';
   String get unstage => 'Unstage';
@@ -86,6 +118,20 @@ class GitFrontStrings {
   String get checkoutDetached =>
       text('이 커밋으로 Checkout…', 'Checkout this commit…');
   String get cherryPick => 'Cherry-pick…';
+  String get cherryPickChecking =>
+      text('Cherry-pick · 확인 중…', 'Cherry-pick · Checking…');
+  String get cherryPickAlreadyApplied =>
+      text('Cherry-pick · 이미 반영됨', 'Cherry-pick · Already applied');
+  String get cherryPickConflicts =>
+      text('Cherry-pick · 충돌 가능', 'Cherry-pick · Conflicts likely');
+  String get cherryPickNoChanges => text(
+    '현재 HEAD에 적용할 변경이 없습니다.',
+    'There are no changes to apply to the current HEAD.',
+  );
+  String get cherryPickConflictWarning => text(
+    '현재 HEAD에 적용하면 충돌할 가능성이 있습니다.',
+    'Applying this commit to the current HEAD is likely to conflict.',
+  );
   String get revertCommit => 'Revert…';
   String get rebaseOntoCommit =>
       text('현재 브랜치를 이 커밋에 Rebase…', 'Rebase current branch onto this commit…');
@@ -119,6 +165,34 @@ class GitFrontStrings {
   String get tag => text('태그', 'Tag');
   String get localBranch => text('로컬 브랜치', 'Local branch');
   String get remoteBranch => text('원격 브랜치', 'Remote branch');
+  String selectedCount(int count) => text('$count개 선택', '$count selected');
+  String get intentToAdd => text('추적 시작(내용 제외)', 'Intent to add');
+  String get clearSelection => text('선택 해제', 'Clear selection');
+  String get commitOptions => text('커밋 옵션', 'Commit options');
+  String get amend => text('마지막 커밋 수정', 'Amend');
+  String get signOff => 'Sign-off';
+  String get allowEmpty => text('빈 커밋 허용', 'Allow empty');
+  String get normalCommit => text('일반', 'Normal');
+  String get fixupCommit => 'Fixup';
+  String get squashCommit => 'Squash';
+  String get targetCommit => text('대상 커밋', 'Target commit');
+  String get signing => text('서명', 'Signing');
+  String get useGitConfig => text('Git 설정 사용', 'Use Git config');
+  String get signThisCommit => text('이 커밋 서명', 'Sign this commit');
+  String get doNotSign => text('서명하지 않음', 'Do not sign');
+  String get authorName => text('작성자 이름 (선택)', 'Author name (optional)');
+  String get authorEmail => text('작성자 이메일 (선택)', 'Author email (optional)');
+  String get authorDate =>
+      text('작성 시각 (ISO 8601, 선택)', 'Author date (ISO 8601, optional)');
+  String get stageSelected => text('선택 줄 Stage', 'Stage selected');
+  String get unstageSelected => text('선택 줄 Unstage', 'Unstage selected');
+  String get discardSelectedLines => text('선택 줄 폐기', 'Discard selected lines');
+  String get discardSelectedLinesQuestion =>
+      text('선택한 줄을 폐기할까요?', 'Discard selected lines?');
+  String get discardedChangesCannotRecover => text(
+    '이 tracked 변경은 GitFront에서 복구할 수 없습니다.',
+    'These tracked changes cannot be recovered by GitFront.',
+  );
 }
 
 Locale resolveLocale(BuildContext context, AppLanguage language) {

@@ -7,9 +7,14 @@ import '../frb_generated.dart';
 import 'models.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `assign_graph_lanes`, `build_reset_preview`, `build_snapshot`, `cleanup_rebase_session`, `collect_branches`, `collect_remotes`, `collect_stashes`, `collect_status`, `conflict_ours_label`, `conflict_theirs_label`, `control_sequence`, `convert_diff`, `delta_status`, `display_path`, `ensure_clean_tracked`, `ensure_no_operation_in_progress`, `find_commit`, `format_git_error`, `head_information`, `is_binary`, `map_repository_state`, `next_generation`, `parse_conflict_regions`, `quoted_editor_command`, `read_blob`, `rebase_action_name`, `rebase_session_path`, `redact`, `reference_rank`, `references_by_oid`, `result_from_output`, `run_git_capture_with_stdin`, `run_git_capture`, `run_git_without_repo`, `run_git`, `safe_relative_path`, `safe_worktree_path`, `sanitize_todo`, `select_hunk`, `sequence_editor_path`, `short_reference`, `staged_kind`, `unstaged_kind`, `untracked_collision_root`, `validate_mainline`, `validate_rebase_plan`, `validate_ref_name`, `validate_tag_name`
+// These functions are ignored because they are not marked as `pub`: `append_operation`, `assign_graph_lanes_with_state`, `assign_graph_lanes`, `branch_page`, `build_reset_preview`, `build_snapshot`, `change_page`, `cleanup_rebase_session`, `collect_branches`, `collect_remotes`, `collect_stashes`, `collect_status`, `config_scope`, `conflict_ours_label`, `conflict_theirs_label`, `control_sequence`, `convert_diff`, `delta_status`, `display_config_origin`, `display_path`, `ensure_clean_tracked`, `ensure_history_oids`, `ensure_no_operation_in_progress`, `find_commit`, `format_git_error`, `git_output_lines`, `gitignore_contents`, `head_information`, `hide_console_window`, `is_binary`, `is_sensitive_config_key`, `map_repository_state`, `next_generation`, `normalize_sparse_directories`, `nul_pathspec`, `parse_conflict_regions`, `quoted_editor_command`, `read_blob`, `rebase_action_name`, `rebase_session_path`, `redact`, `reference_rank`, `references_by_oid`, `replace_branch_cache`, `replace_change_cache`, `result_from_output`, `run_config_mutation`, `run_git_capture_with_stdin`, `run_git_capture`, `run_git_without_repo_named`, `run_git`, `safe_relative_path`, `safe_worktree_path`, `sanitize_todo`, `select_hunk_lines`, `select_hunk`, `sequence_editor_path`, `short_reference`, `staged_kind`, `start_history_cache`, `unstaged_kind`, `untracked_collision_root`, `validate_branch_name`, `validate_config_key`, `validate_config_value`, `validate_identity`, `validate_mainline`, `validate_optional_url`, `validate_rebase_plan`, `validate_ref_name`, `validate_remote_name`, `validate_tag_name`
+// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `BranchCache`, `ChangeCache`, `HistoryCache`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `drop`, `fmt`, `fmt`, `fmt`
 
 Future<String> gitVersion() => RustLib.instance.api.crateApiGitGitVersion();
+
+Future<GitCapabilities> gitCapabilities() =>
+    RustLib.instance.api.crateApiGitGitCapabilities();
 
 Future<RepositorySnapshot> openRepository({required String path}) =>
     RustLib.instance.api.crateApiGitOpenRepository(path: path);
@@ -19,6 +24,58 @@ Future<RepositorySnapshot> refreshRepository({required String path}) =>
 
 Future<WorkingTreeSnapshot> refreshWorkingTree({required String path}) =>
     RustLib.instance.api.crateApiGitRefreshWorkingTree(path: path);
+
+Future<RepositorySnapshotPage> openRepositoryPaged({
+  required String path,
+  required int changeLimit,
+}) => RustLib.instance.api.crateApiGitOpenRepositoryPaged(
+  path: path,
+  changeLimit: changeLimit,
+);
+
+Future<RepositorySnapshotPage> refreshRepositoryPaged({
+  required String path,
+  required int changeLimit,
+}) => RustLib.instance.api.crateApiGitRefreshRepositoryPaged(
+  path: path,
+  changeLimit: changeLimit,
+);
+
+Future<WorkingTreeSnapshotPage> refreshWorkingTreePaged({
+  required String path,
+  required int changeLimit,
+}) => RustLib.instance.api.crateApiGitRefreshWorkingTreePaged(
+  path: path,
+  changeLimit: changeLimit,
+);
+
+Future<FileChangePage> listChangesCursor({
+  required String path,
+  required String cursor,
+  required int limit,
+}) => RustLib.instance.api.crateApiGitListChangesCursor(
+  path: path,
+  cursor: cursor,
+  limit: limit,
+);
+
+Future<BranchPage> listBranchesCursor({
+  required String path,
+  required String cursor,
+  required int limit,
+}) => RustLib.instance.api.crateApiGitListBranchesCursor(
+  path: path,
+  cursor: cursor,
+  limit: limit,
+);
+
+Future<FileChange?> getCachedFileChange({
+  required String path,
+  required String filePath,
+}) => RustLib.instance.api.crateApiGitGetCachedFileChange(
+  path: path,
+  filePath: filePath,
+);
 
 Stream<RepositoryWatchEvent> watchRepository({required String path}) =>
     RustLib.instance.api.crateApiGitWatchRepository(path: path);
@@ -30,6 +87,23 @@ Future<CommitPage> listCommits({
 }) => RustLib.instance.api.crateApiGitListCommits(
   path: path,
   offset: offset,
+  limit: limit,
+);
+
+/// Returns a stable cursor page without replaying or fully consuming the
+/// revwalk for every page.
+///
+/// A background reader owns the revwalk and advances it only far enough to
+/// produce the visible page plus one look-ahead commit. Commit metadata and
+/// graph lanes are materialized lazily as pages become visible. A cursor is
+/// tied to the current HEAD and is rejected after history changes.
+Future<CommitCursorPage> listCommitsCursor({
+  required String path,
+  String? cursor,
+  required int limit,
+}) => RustLib.instance.api.crateApiGitListCommitsCursor(
+  path: path,
+  cursor: cursor,
   limit: limit,
 );
 
@@ -68,6 +142,11 @@ Future<OperationResult> unstagePaths({
   required List<String> paths,
 }) => RustLib.instance.api.crateApiGitUnstagePaths(path: path, paths: paths);
 
+Future<OperationResult> intentToAdd({
+  required String path,
+  required List<String> paths,
+}) => RustLib.instance.api.crateApiGitIntentToAdd(path: path, paths: paths);
+
 Future<OperationResult> applyHunk({
   required String path,
   required String filePath,
@@ -80,6 +159,24 @@ Future<OperationResult> applyHunk({
   filePath: filePath,
   staged: staged,
   hunkIndex: hunkIndex,
+  expectedFingerprint: expectedFingerprint,
+  reverse: reverse,
+);
+
+Future<OperationResult> applyHunkLines({
+  required String path,
+  required String filePath,
+  required bool staged,
+  required int hunkIndex,
+  required List<int> lineIndices,
+  required String expectedFingerprint,
+  required bool reverse,
+}) => RustLib.instance.api.crateApiGitApplyHunkLines(
+  path: path,
+  filePath: filePath,
+  staged: staged,
+  hunkIndex: hunkIndex,
+  lineIndices: lineIndices,
   expectedFingerprint: expectedFingerprint,
   reverse: reverse,
 );
@@ -99,6 +196,17 @@ Future<OperationResult> createCommit({
   required String message,
 }) =>
     RustLib.instance.api.crateApiGitCreateCommit(path: path, message: message);
+
+Future<CommitDefaults> loadCommitDefaults({required String path}) =>
+    RustLib.instance.api.crateApiGitLoadCommitDefaults(path: path);
+
+Future<OperationResult> createCommitWithOptions({
+  required String path,
+  required CommitOptions options,
+}) => RustLib.instance.api.crateApiGitCreateCommitWithOptions(
+  path: path,
+  options: options,
+);
 
 Future<OperationResult> createTag({
   required String path,
@@ -124,6 +232,19 @@ Future<OperationResult> cherryPickCommit({
   required String oid,
   int? mainlineParent,
 }) => RustLib.instance.api.crateApiGitCherryPickCommit(
+  path: path,
+  oid: oid,
+  mainlineParent: mainlineParent,
+);
+
+/// Simulates a single-commit cherry-pick against HEAD without changing the
+/// repository. Unlike an ancestry or patch-id check, this correctly allows an
+/// old commit whose effect was removed by a later revert.
+Future<CherryPickApplicability> assessCherryPick({
+  required String path,
+  required String oid,
+  int? mainlineParent,
+}) => RustLib.instance.api.crateApiGitAssessCherryPick(
   path: path,
   oid: oid,
   mainlineParent: mainlineParent,
@@ -174,10 +295,120 @@ Future<OperationResult> resetToCommit({
   branchConfirmation: branchConfirmation,
 );
 
+Future<RepositoryInitResult> initializeRepository({
+  required RepositoryInitOptions options,
+}) => RustLib.instance.api.crateApiGitInitializeRepository(options: options);
+
 Future<OperationResult> cloneRepository({
   required String url,
   required String target,
 }) => RustLib.instance.api.crateApiGitCloneRepository(url: url, target: target);
+
+Future<CloneResult> cloneRepositoryAdvanced({required CloneOptions options}) =>
+    RustLib.instance.api.crateApiGitCloneRepositoryAdvanced(options: options);
+
+Future<GitConfigSnapshot> readGitConfig({String? path}) =>
+    RustLib.instance.api.crateApiGitReadGitConfig(path: path);
+
+Future<OperationResult> setGitConfig({
+  String? path,
+  required GitConfigScope scope,
+  required String key,
+  required String value,
+}) => RustLib.instance.api.crateApiGitSetGitConfig(
+  path: path,
+  scope: scope,
+  key: key,
+  value: value,
+);
+
+Future<OperationResult> addGitConfigValue({
+  String? path,
+  required GitConfigScope scope,
+  required String key,
+  required String value,
+}) => RustLib.instance.api.crateApiGitAddGitConfigValue(
+  path: path,
+  scope: scope,
+  key: key,
+  value: value,
+);
+
+Future<OperationResult> unsetGitConfigValue({
+  String? path,
+  required GitConfigScope scope,
+  required String key,
+  String? value,
+}) => RustLib.instance.api.crateApiGitUnsetGitConfigValue(
+  path: path,
+  scope: scope,
+  key: key,
+  value: value,
+);
+
+Future<List<RemoteDetails>> listRemoteDetails({required String path}) =>
+    RustLib.instance.api.crateApiGitListRemoteDetails(path: path);
+
+Future<OperationResult> addRemote({
+  required String path,
+  required String name,
+  required String fetchUrl,
+}) => RustLib.instance.api.crateApiGitAddRemote(
+  path: path,
+  name: name,
+  fetchUrl: fetchUrl,
+);
+
+Future<OperationResult> renameRemote({
+  required String path,
+  required String oldName,
+  required String newName,
+}) => RustLib.instance.api.crateApiGitRenameRemote(
+  path: path,
+  oldName: oldName,
+  newName: newName,
+);
+
+Future<OperationResult> updateRemote({
+  required String path,
+  required String name,
+  required String fetchUrl,
+  String? pushUrl,
+}) => RustLib.instance.api.crateApiGitUpdateRemote(
+  path: path,
+  name: name,
+  fetchUrl: fetchUrl,
+  pushUrl: pushUrl,
+);
+
+Future<OperationResult> removeRemote({
+  required String path,
+  required String name,
+}) => RustLib.instance.api.crateApiGitRemoveRemote(path: path, name: name);
+
+Future<OperationResult> createTrackingBranch({
+  required String path,
+  required String remoteBranch,
+  required String localBranch,
+}) => RustLib.instance.api.crateApiGitCreateTrackingBranch(
+  path: path,
+  remoteBranch: remoteBranch,
+  localBranch: localBranch,
+);
+
+Future<SparseCheckoutState> readSparseCheckout({required String path}) =>
+    RustLib.instance.api.crateApiGitReadSparseCheckout(path: path);
+
+Future<OperationResult> setSparseCheckout({
+  required String path,
+  required List<String> directories,
+}) => RustLib.instance.api.crateApiGitSetSparseCheckout(
+  path: path,
+  directories: directories,
+);
+
+Future<OperationResult> disableSparseCheckout({required String path}) =>
+    RustLib.instance.api.crateApiGitDisableSparseCheckout(path: path);
 
 Future<OperationResult> createBranch({
   required String path,
@@ -230,6 +461,18 @@ Future<OperationResult> pushCurrent({
   path: path,
   forceWithLease: forceWithLease,
   setUpstream: setUpstream,
+);
+
+Future<OperationResult> pushCurrentTo({
+  required String path,
+  required String remote,
+  required String remoteBranch,
+  required bool forceWithLease,
+}) => RustLib.instance.api.crateApiGitPushCurrentTo(
+  path: path,
+  remote: remote,
+  remoteBranch: remoteBranch,
+  forceWithLease: forceWithLease,
 );
 
 Future<OperationResult> mergeBranch({

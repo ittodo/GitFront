@@ -1,8 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
+import 'settings_store.dart';
 import 'src/rust/api/git.dart' as git_api;
 import 'src/rust/api/models.dart';
 import 'src/rust/api/update.dart' as update_api;
@@ -14,8 +14,16 @@ enum AppLanguage { system, korean, english }
 class RepoTabState {
   const RepoTabState({
     required this.snapshot,
+    this.changes = const [],
+    this.nextChangeCursor,
+    this.totalChanges = 0,
+    this.stagedChangeCount = 0,
+    this.branches = const [],
+    this.nextBranchCursor,
+    this.totalBranches = 0,
     this.commits = const [],
-    this.nextOffset,
+    this.nextCursor,
+    this.totalCommits = 0,
     this.mode = WorkspaceMode.changes,
     this.selectedFile,
     this.selectedFileStaged = false,
@@ -29,8 +37,16 @@ class RepoTabState {
   });
 
   final RepositorySnapshot snapshot;
+  final List<FileChange> changes;
+  final String? nextChangeCursor;
+  final int totalChanges;
+  final int stagedChangeCount;
+  final List<BranchInfo> branches;
+  final String? nextBranchCursor;
+  final int totalBranches;
   final List<CommitSummary> commits;
-  final int? nextOffset;
+  final String? nextCursor;
+  final int totalCommits;
   final WorkspaceMode mode;
   final FileChange? selectedFile;
   final bool selectedFileStaged;
@@ -42,11 +58,43 @@ class RepoTabState {
   final bool busy;
   final String? error;
 
+  List<FileChange> get visibleChanges =>
+      changes.isEmpty && snapshot.files.isNotEmpty ? snapshot.files : changes;
+
+  int get visibleChangeCount => totalChanges == 0 && snapshot.files.isNotEmpty
+      ? snapshot.files.length
+      : totalChanges;
+
+  int get visibleStagedChangeCount =>
+      stagedChangeCount == 0 && snapshot.files.isNotEmpty
+      ? snapshot.files.where((file) => file.staged != ChangeKind.none).length
+      : stagedChangeCount;
+
+  List<BranchInfo> get visibleBranches =>
+      branches.isEmpty && snapshot.branches.isNotEmpty
+      ? snapshot.branches
+      : branches;
+
+  int get visibleBranchCount =>
+      totalBranches == 0 && snapshot.branches.isNotEmpty
+      ? snapshot.branches.length
+      : totalBranches;
+
   RepoTabState copyWith({
     RepositorySnapshot? snapshot,
+    List<FileChange>? changes,
+    String? nextChangeCursor,
+    bool clearNextChangeCursor = false,
+    int? totalChanges,
+    int? stagedChangeCount,
+    List<BranchInfo>? branches,
+    String? nextBranchCursor,
+    bool clearNextBranchCursor = false,
+    int? totalBranches,
     List<CommitSummary>? commits,
-    int? nextOffset,
-    bool clearNextOffset = false,
+    String? nextCursor,
+    bool clearNextCursor = false,
+    int? totalCommits,
     WorkspaceMode? mode,
     FileChange? selectedFile,
     bool clearSelectedFile = false,
@@ -67,8 +115,20 @@ class RepoTabState {
   }) {
     return RepoTabState(
       snapshot: snapshot ?? this.snapshot,
+      changes: changes ?? this.changes,
+      nextChangeCursor: clearNextChangeCursor
+          ? null
+          : nextChangeCursor ?? this.nextChangeCursor,
+      totalChanges: totalChanges ?? this.totalChanges,
+      stagedChangeCount: stagedChangeCount ?? this.stagedChangeCount,
+      branches: branches ?? this.branches,
+      nextBranchCursor: clearNextBranchCursor
+          ? null
+          : nextBranchCursor ?? this.nextBranchCursor,
+      totalBranches: totalBranches ?? this.totalBranches,
       commits: commits ?? this.commits,
-      nextOffset: clearNextOffset ? null : nextOffset ?? this.nextOffset,
+      nextCursor: clearNextCursor ? null : nextCursor ?? this.nextCursor,
+      totalCommits: totalCommits ?? this.totalCommits,
       mode: mode ?? this.mode,
       selectedFile: clearSelectedFile
           ? null
@@ -158,27 +218,23 @@ class GitFrontState {
   }
 }
 
+final settingsStoreProvider = Provider<SettingsStore>(
+  (ref) => JsonSettingsStore.system(),
+);
+
 final gitFrontProvider = NotifierProvider<GitFrontController, GitFrontState>(
   GitFrontController.new,
 );
 
 class GitFrontController extends Notifier<GitFrontState> {
-  static const _openRepositoriesKey = 'openRepositories';
-  static const _activeRepositoryKey = 'activeRepository';
-  static const _languageKey = 'language';
-  static const _darkModeKey = 'darkMode';
-  static const _recentRepositoriesKey = 'recentRepositories';
-  static const _leftPanelWidthKey = 'leftPanelWidth';
-  static const _detailPanelWidthKey = 'detailPanelWidth';
-  static const _detailPanelVisibleKey = 'detailPanelVisible';
-  static const _externalEditorKey = 'externalEditor';
-  static const _customEditorExecutableKey = 'customEditorExecutable';
-  static const _lastUpdateCheckKey = 'lastUpdateCheck';
   final Map<String, StreamSubscription<dynamic>> _watchers = {};
   final Map<String, int> _requestVersions = {};
+  late SettingsStore _settingsStore;
+  AppSettings _settings = const AppSettings();
 
   @override
   GitFrontState build() {
+    _settingsStore = ref.read(settingsStoreProvider);
     ref.onDispose(() {
       for (final watcher in _watchers.values) {
         unawaited(watcher.cancel());
@@ -188,37 +244,60 @@ class GitFrontController extends Notifier<GitFrontState> {
   }
 
   Future<void> initialize() async {
-    final preferences = await SharedPreferences.getInstance();
-    final languageName = preferences.getString(_languageKey);
+    final startup = Stopwatch()..start();
+    _settings = await _settingsStore.load();
+    final settingsLoadedAt = startup.elapsedMilliseconds;
+    try {
+      final capabilities = await git_api.gitCapabilities();
+      _appendLog(capabilities.version);
+      if (!capabilities.supportsRepositorySetup ||
+          !capabilities.supportsFixedValueConfig ||
+          !capabilities.supportsSparseCheckout) {
+        _appendLog(
+          'Git 2.31 or newer is recommended. Some repository setup features are unavailable.',
+        );
+      }
+    } catch (error) {
+      _appendLog('Git capability check failed: $error');
+    }
+    final languageName = _settings.language;
     final language = AppLanguage.values.where(
       (item) => item.name == languageName,
     );
-    final editorName = preferences.getString(_externalEditorKey);
+    final editorName = _settings.externalEditor;
     final editors = ExternalEditor.values.where(
       (editor) => editor.name == editorName,
     );
     state = state.copyWith(
       language: language.isEmpty ? AppLanguage.system : language.first,
-      darkMode: preferences.containsKey(_darkModeKey)
-          ? preferences.getBool(_darkModeKey)
-          : null,
-      recentRepositories:
-          preferences.getStringList(_recentRepositoriesKey) ?? const [],
-      leftPanelWidth: preferences.getDouble(_leftPanelWidthKey) ?? 250,
-      detailPanelWidth: preferences.getDouble(_detailPanelWidthKey) ?? 560,
-      detailPanelVisible: preferences.getBool(_detailPanelVisibleKey) ?? true,
+      darkMode: _settings.darkMode,
+      recentRepositories: _settings.recentRepositories,
+      leftPanelWidth: _settings.leftPanelWidth,
+      detailPanelWidth: _settings.detailPanelWidth,
+      detailPanelVisible: _settings.detailPanelVisible,
       externalEditor: editors.isEmpty ? ExternalEditor.vsCode : editors.first,
-      customEditorExecutable:
-          preferences.getString(_customEditorExecutableKey) ?? '',
+      customEditorExecutable: _settings.customEditorExecutable,
+      initializing: false,
+    );
+    _appendLog(
+      'Startup UI ready in ${startup.elapsedMilliseconds} ms '
+      '(settings $settingsLoadedAt ms)',
     );
 
-    final paths = preferences.getStringList(_openRepositoriesKey) ?? const [];
-    final activePath = preferences.getString(_activeRepositoryKey);
+    final paths = _settings.openRepositories;
+    final activePath = _settings.activeRepository;
     for (final path in paths) {
-      await openPath(path, select: path == activePath, persist: false);
+      try {
+        await openPath(path, select: path == activePath, persist: false);
+      } catch (error) {
+        _appendLog('Could not restore $path\n$error');
+      }
     }
-    state = state.copyWith(initializing: false);
-    unawaited(_checkUpdateSilently(preferences));
+    _appendLog(
+      'Repository restore queued in ${startup.elapsedMilliseconds} ms '
+      '(${state.tabs.length}/${paths.length} available)',
+    );
+    unawaited(_checkUpdateSilently());
   }
 
   Future<void> openPath(
@@ -234,18 +313,24 @@ class GitFrontController extends Notifier<GitFrontState> {
       return;
     }
     try {
-      final snapshot = await git_api.openRepository(path: path);
-      final page = await git_api.listCommits(
-        path: snapshot.workdir,
-        offset: 0,
-        limit: 200,
+      final started = Stopwatch()..start();
+      final opened = await git_api.openRepositoryPaged(
+        path: path,
+        changeLimit: 250,
       );
+      final snapshot = opened.snapshot;
       final tabs = [
         ...state.tabs,
         RepoTabState(
           snapshot: snapshot,
-          commits: page.commits,
-          nextOffset: page.nextOffset,
+          changes: opened.changes.files,
+          nextChangeCursor: opened.changes.nextCursor,
+          totalChanges: opened.changes.totalFiles,
+          stagedChangeCount: opened.changes.stagedCount,
+          branches: opened.branches.branches,
+          nextBranchCursor: opened.branches.nextCursor,
+          totalBranches: opened.branches.totalBranches,
+          busy: true,
         ),
       ];
       state = state.copyWith(
@@ -259,11 +344,44 @@ class GitFrontController extends Notifier<GitFrontState> {
         ].take(12).toList(),
       );
       _startWatcher(snapshot.workdir);
-      _appendLog('Opened ${snapshot.workdir}');
+      _appendLog(
+        'Opened ${snapshot.workdir} overview in ${started.elapsedMilliseconds} ms',
+      );
+      unawaited(_loadInitialHistory(snapshot.workdir));
       if (persist) await _persistTabs();
     } catch (error) {
       _appendLog('Open failed: $error');
       rethrow;
+    }
+  }
+
+  Future<void> _loadInitialHistory(String path) async {
+    final started = Stopwatch()..start();
+    try {
+      final page = await git_api.listCommitsCursor(
+        path: path,
+        cursor: null,
+        limit: 200,
+      );
+      final index = _indexForPath(path);
+      if (index < 0) return;
+      _updateTab(
+        index,
+        state.tabs[index].copyWith(
+          commits: page.commits,
+          nextCursor: page.nextCursor,
+          clearNextCursor: page.nextCursor == null,
+          totalCommits: page.totalCommits,
+          busy: false,
+        ),
+      );
+      _appendLog(
+        'History ready for $path in ${started.elapsedMilliseconds} ms '
+        '(${page.commits.length} shown)',
+      );
+    } catch (error) {
+      final index = _indexForPath(path);
+      if (index >= 0) _setError(index, error);
     }
   }
 
@@ -275,11 +393,52 @@ class GitFrontController extends Notifier<GitFrontState> {
     await openPath(target);
   }
 
+  Future<void> cloneAdvanced(CloneOptions options) async {
+    _appendLog('Cloning ${options.url}');
+    final result = await git_api.cloneRepositoryAdvanced(options: options);
+    _recordResult('Clone', result.operation);
+    for (final warning in result.warnings) {
+      _appendLog('Clone warning: $warning');
+    }
+    if (!result.operation.success) throw Exception(result.operation.summary);
+    await openPath(result.path);
+  }
+
+  Future<void> initializeRepository(RepositoryInitOptions options) async {
+    _appendLog('Initializing ${options.targetPath}');
+    final result = await git_api.initializeRepository(options: options);
+    _recordResult('Initialize repository', result.operation);
+    for (final warning in result.warnings) {
+      _appendLog('Initialize warning: $warning');
+    }
+    if (!result.operation.success) throw Exception(result.operation.summary);
+    await openPath(result.path);
+  }
+
   void activateTab(int index) {
     if (index < 0 || index >= state.tabs.length) return;
     state = state.copyWith(activeIndex: index);
     unawaited(_persistTabs());
     unawaited(refresh());
+  }
+
+  void reorderTabs(int oldIndex, int newIndex) {
+    if (oldIndex < 0 || oldIndex >= state.tabs.length) return;
+    if (newIndex < 0 || newIndex > state.tabs.length) return;
+    final activePath = state.activeTab?.snapshot.workdir;
+    final tabs = [...state.tabs];
+    final moved = tabs.removeAt(oldIndex);
+    final insertionIndex = oldIndex < newIndex ? newIndex - 1 : newIndex;
+    if (insertionIndex == oldIndex) return;
+    tabs.insert(insertionIndex, moved);
+    final activeIndex = activePath == null
+        ? -1
+        : tabs.indexWhere(
+            (tab) =>
+                tab.snapshot.workdir.toLowerCase() == activePath.toLowerCase(),
+          );
+    state = state.copyWith(tabs: tabs, activeIndex: activeIndex);
+    unawaited(_persistTabs());
   }
 
   void closeTab(int index) {
@@ -311,23 +470,32 @@ class GitFrontController extends Notifier<GitFrontState> {
     final requestVersion = _startRequest(path);
     _updateTab(initialIndex, tab.copyWith(busy: true, clearError: true));
     try {
-      final snapshot = await git_api.refreshRepository(path: path);
-      CommitPage? page;
+      final refreshed = await git_api.refreshRepositoryPaged(
+        path: path,
+        changeLimit: 250,
+      );
+      final snapshot = refreshed.snapshot;
+      CommitCursorPage? page;
       if (reloadHistory) {
-        page = await git_api.listCommits(
+        page = await git_api.listCommitsCursor(
           path: snapshot.workdir,
-          offset: 0,
+          cursor: null,
           limit: 200,
         );
       }
       final index = _indexForPath(path);
       if (index < 0 || !_isLatestRequest(path, requestVersion)) return;
       final current = state.tabs[index];
-      final selected = current.selectedFile == null
-          ? null
-          : snapshot.files
-                .where((file) => file.path == current.selectedFile!.path)
-                .firstOrNull;
+      FileChange? selected;
+      if (current.selectedFile != null) {
+        selected = refreshed.changes.files
+            .where((file) => file.path == current.selectedFile!.path)
+            .firstOrNull;
+        selected ??= await git_api.getCachedFileChange(
+          path: path,
+          filePath: current.selectedFile!.path,
+        );
+      }
       DiffDocument? diff;
       if (selected != null) {
         diff = await git_api.getWorktreeDiff(
@@ -348,8 +516,19 @@ class GitFrontController extends Notifier<GitFrontState> {
         latestIndex,
         latest.copyWith(
           snapshot: snapshot,
+          changes: refreshed.changes.files,
+          nextChangeCursor: refreshed.changes.nextCursor,
+          clearNextChangeCursor: refreshed.changes.nextCursor == null,
+          totalChanges: refreshed.changes.totalFiles,
+          stagedChangeCount: refreshed.changes.stagedCount,
+          branches: refreshed.branches.branches,
+          nextBranchCursor: refreshed.branches.nextCursor,
+          clearNextBranchCursor: refreshed.branches.nextCursor == null,
+          totalBranches: refreshed.branches.totalBranches,
           commits: page?.commits,
-          nextOffset: page?.nextOffset,
+          nextCursor: page?.nextCursor,
+          clearNextCursor: page != null && page.nextCursor == null,
+          totalCommits: page?.totalCommits,
           selectedFile: selected,
           clearSelectedFile: selected == null,
           diff: diff,
@@ -380,15 +559,24 @@ class GitFrontController extends Notifier<GitFrontState> {
     final path = tab.snapshot.workdir;
     final requestVersion = _startRequest(path);
     try {
-      final workingTree = await git_api.refreshWorkingTree(path: path);
+      final refreshed = await git_api.refreshWorkingTreePaged(
+        path: path,
+        changeLimit: 250,
+      );
+      final workingTree = refreshed.snapshot;
       final index = _indexForPath(path);
       if (index < 0 || !_isLatestRequest(path, requestVersion)) return;
       final current = state.tabs[index];
-      final selected = current.selectedFile == null
-          ? null
-          : workingTree.files
-                .where((file) => file.path == current.selectedFile!.path)
-                .firstOrNull;
+      FileChange? selected;
+      if (current.selectedFile != null) {
+        selected = refreshed.changes.files
+            .where((file) => file.path == current.selectedFile!.path)
+            .firstOrNull;
+        selected ??= await git_api.getCachedFileChange(
+          path: path,
+          filePath: current.selectedFile!.path,
+        );
+      }
       DiffDocument? diff;
       if (selected != null) {
         diff = await git_api.getWorktreeDiff(
@@ -415,11 +603,16 @@ class GitFrontController extends Notifier<GitFrontState> {
             behind: snapshot.behind,
             state: workingTree.state,
             generation: workingTree.generation,
-            files: workingTree.files,
+            files: const [],
             branches: snapshot.branches,
             remotes: snapshot.remotes,
             stashes: snapshot.stashes,
           ),
+          changes: refreshed.changes.files,
+          nextChangeCursor: refreshed.changes.nextCursor,
+          clearNextChangeCursor: refreshed.changes.nextCursor == null,
+          totalChanges: refreshed.changes.totalFiles,
+          stagedChangeCount: refreshed.changes.stagedCount,
           selectedFile: selected,
           clearSelectedFile: selected == null,
           diff: diff,
@@ -539,6 +732,19 @@ class GitFrontController extends Notifier<GitFrontState> {
     );
   }
 
+  Future<CherryPickApplicability> assessCherryPick(
+    CommitSummary commit, {
+    int? mainlineParent,
+  }) async {
+    final tab = state.activeTab;
+    if (tab == null) throw StateError('No repository is open.');
+    return git_api.assessCherryPick(
+      path: tab.snapshot.workdir,
+      oid: commit.oid,
+      mainlineParent: mainlineParent,
+    );
+  }
+
   Future<void> compareCommitWithHead(CommitSummary commit) async {
     final tab = state.activeTab;
     final headOid = tab?.snapshot.headOid;
@@ -584,15 +790,15 @@ class GitFrontController extends Notifier<GitFrontState> {
 
   Future<void> loadMoreCommits() async {
     final tab = state.activeTab;
-    if (tab == null || tab.nextOffset == null || tab.busy) return;
+    if (tab == null || tab.nextCursor == null || tab.busy) return;
     final path = tab.snapshot.workdir;
     final requestVersion = _startRequest(path);
     final index = _indexForPath(path);
     _updateTab(index, tab.copyWith(busy: true));
     try {
-      final page = await git_api.listCommits(
+      final page = await git_api.listCommitsCursor(
         path: path,
-        offset: tab.nextOffset!,
+        cursor: tab.nextCursor,
         limit: 200,
       );
       final latestIndex = _indexForPath(path);
@@ -602,8 +808,78 @@ class GitFrontController extends Notifier<GitFrontState> {
         latestIndex,
         current.copyWith(
           commits: [...current.commits, ...page.commits],
-          nextOffset: page.nextOffset,
-          clearNextOffset: page.nextOffset == null,
+          nextCursor: page.nextCursor,
+          clearNextCursor: page.nextCursor == null,
+          totalCommits: page.totalCommits,
+          busy: false,
+        ),
+      );
+    } catch (error) {
+      if (_isLatestRequest(path, requestVersion)) {
+        final latestIndex = _indexForPath(path);
+        if (latestIndex >= 0) _setError(latestIndex, error);
+      }
+    }
+  }
+
+  Future<void> loadMoreChanges() async {
+    final tab = state.activeTab;
+    if (tab == null || tab.nextChangeCursor == null || tab.busy) return;
+    final path = tab.snapshot.workdir;
+    final requestVersion = _startRequest(path);
+    final index = _indexForPath(path);
+    _updateTab(index, tab.copyWith(busy: true));
+    try {
+      final page = await git_api.listChangesCursor(
+        path: path,
+        cursor: tab.nextChangeCursor!,
+        limit: 250,
+      );
+      final latestIndex = _indexForPath(path);
+      if (latestIndex < 0 || !_isLatestRequest(path, requestVersion)) return;
+      final current = state.tabs[latestIndex];
+      _updateTab(
+        latestIndex,
+        current.copyWith(
+          changes: [...current.changes, ...page.files],
+          nextChangeCursor: page.nextCursor,
+          clearNextChangeCursor: page.nextCursor == null,
+          totalChanges: page.totalFiles,
+          stagedChangeCount: page.stagedCount,
+          busy: false,
+        ),
+      );
+    } catch (error) {
+      if (_isLatestRequest(path, requestVersion)) {
+        final latestIndex = _indexForPath(path);
+        if (latestIndex >= 0) _setError(latestIndex, error);
+      }
+    }
+  }
+
+  Future<void> loadMoreBranches() async {
+    final tab = state.activeTab;
+    if (tab == null || tab.nextBranchCursor == null || tab.busy) return;
+    final path = tab.snapshot.workdir;
+    final requestVersion = _startRequest(path);
+    final index = _indexForPath(path);
+    _updateTab(index, tab.copyWith(busy: true));
+    try {
+      final page = await git_api.listBranchesCursor(
+        path: path,
+        cursor: tab.nextBranchCursor!,
+        limit: 250,
+      );
+      final latestIndex = _indexForPath(path);
+      if (latestIndex < 0 || !_isLatestRequest(path, requestVersion)) return;
+      final current = state.tabs[latestIndex];
+      _updateTab(
+        latestIndex,
+        current.copyWith(
+          branches: [...current.branches, ...page.branches],
+          nextBranchCursor: page.nextCursor,
+          clearNextBranchCursor: page.nextCursor == null,
+          totalBranches: page.totalBranches,
           busy: false,
         ),
       );
@@ -648,20 +924,34 @@ class GitFrontController extends Notifier<GitFrontState> {
     }
   }
 
+  Future<OperationResult> runStandaloneOperation(
+    String label,
+    Future<OperationResult> Function() operation,
+  ) async {
+    _appendLog('$label started');
+    try {
+      final result = await operation();
+      _recordResult(label, result);
+      if (!result.success && result.exitCode != 5) {
+        throw Exception(result.summary);
+      }
+      return result;
+    } catch (error) {
+      _appendLog('$label failed: $error');
+      rethrow;
+    }
+  }
+
   Future<void> setLanguage(AppLanguage language) async {
     state = state.copyWith(language: language);
-    final preferences = await SharedPreferences.getInstance();
-    await preferences.setString(_languageKey, language.name);
+    _settings = _settings.copyWith(language: language.name);
+    await _saveSettings();
   }
 
   Future<void> setDarkMode(bool? value) async {
     state = state.copyWith(darkMode: value, clearDarkMode: value == null);
-    final preferences = await SharedPreferences.getInstance();
-    if (value == null) {
-      await preferences.remove(_darkModeKey);
-    } else {
-      await preferences.setBool(_darkModeKey, value);
-    }
+    _settings = _settings.copyWith(darkMode: value);
+    await _saveSettings();
   }
 
   Future<void> setPanelWidths({
@@ -681,10 +971,12 @@ class GitFrontController extends Notifier<GitFrontState> {
   }
 
   Future<void> persistLayout() async {
-    final preferences = await SharedPreferences.getInstance();
-    await preferences.setDouble(_leftPanelWidthKey, state.leftPanelWidth);
-    await preferences.setDouble(_detailPanelWidthKey, state.detailPanelWidth);
-    await preferences.setBool(_detailPanelVisibleKey, state.detailPanelVisible);
+    _settings = _settings.copyWith(
+      leftPanelWidth: state.leftPanelWidth,
+      detailPanelWidth: state.detailPanelWidth,
+      detailPanelVisible: state.detailPanelVisible,
+    );
+    await _saveSettings();
   }
 
   Future<void> setExternalEditor(
@@ -695,12 +987,26 @@ class GitFrontController extends Notifier<GitFrontState> {
       externalEditor: editor,
       customEditorExecutable: customExecutable,
     );
-    final preferences = await SharedPreferences.getInstance();
-    await preferences.setString(_externalEditorKey, editor.name);
-    await preferences.setString(
-      _customEditorExecutableKey,
-      state.customEditorExecutable,
+    _settings = _settings.copyWith(
+      externalEditor: editor.name,
+      customEditorExecutable: state.customEditorExecutable,
     );
+    await _saveSettings();
+  }
+
+  String commitDraft(String repositoryPath) =>
+      _settings.commitDrafts[repositoryPath.toLowerCase()] ?? '';
+
+  Future<void> saveCommitDraft(String repositoryPath, String message) async {
+    final drafts = Map<String, String>.from(_settings.commitDrafts);
+    final key = repositoryPath.toLowerCase();
+    if (message.isEmpty) {
+      drafts.remove(key);
+    } else {
+      drafts[key] = message;
+    }
+    _settings = _settings.copyWith(commitDrafts: drafts);
+    await _saveSettings();
   }
 
   void clearOperationLog() => state = state.copyWith(operationLog: const []);
@@ -753,31 +1059,23 @@ class GitFrontController extends Notifier<GitFrontState> {
       _requestVersions[path.toLowerCase()] == requestVersion;
 
   Future<void> _persistTabs() async {
-    final preferences = await SharedPreferences.getInstance();
-    await preferences.setStringList(
-      _openRepositoriesKey,
-      state.tabs.map((tab) => tab.snapshot.workdir).toList(),
-    );
-    await preferences.setStringList(
-      _recentRepositoriesKey,
-      state.recentRepositories,
-    );
     final active = state.activeTab;
-    if (active == null) {
-      await preferences.remove(_activeRepositoryKey);
-    } else {
-      await preferences.setString(
-        _activeRepositoryKey,
-        active.snapshot.workdir,
-      );
-    }
+    _settings = _settings.copyWith(
+      openRepositories: state.tabs
+          .map((tab) => tab.snapshot.workdir)
+          .toList(growable: false),
+      recentRepositories: state.recentRepositories,
+      activeRepository: active?.snapshot.workdir,
+    );
+    await _saveSettings();
   }
 
-  Future<void> _checkUpdateSilently(SharedPreferences preferences) async {
-    final last = preferences.getInt(_lastUpdateCheckKey) ?? 0;
+  Future<void> _checkUpdateSilently() async {
+    final last = _settings.lastUpdateCheck;
     final now = DateTime.now().millisecondsSinceEpoch;
     if (now - last < const Duration(hours: 24).inMilliseconds) return;
-    await preferences.setInt(_lastUpdateCheckKey, now);
+    _settings = _settings.copyWith(lastUpdateCheck: now);
+    await _saveSettings();
     try {
       final update = await update_api.checkForUpdate();
       if (update.state == UpdateState.available) {
@@ -785,6 +1083,14 @@ class GitFrontController extends Notifier<GitFrontState> {
       }
     } catch (error) {
       _appendLog('Update check failed: $error');
+    }
+  }
+
+  Future<void> _saveSettings() async {
+    try {
+      await _settingsStore.save(_settings);
+    } on Object catch (error) {
+      _appendLog('Settings save failed: $error');
     }
   }
 

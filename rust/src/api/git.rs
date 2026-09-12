@@ -12,10 +12,13 @@ use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Write;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::sync::mpsc::{self, RecvTimeoutError};
+use std::thread::{self, JoinHandle};
 use std::time::Duration;
 use uuid::Uuid;
 
@@ -25,12 +28,58 @@ type HeadInformation = (Option<String>, Option<String>, Option<String>, i64, i64
 static GENERATIONS: Lazy<Mutex<HashMap<String, u64>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 static REPOSITORY_LOCKS: Lazy<Mutex<HashMap<String, Arc<Mutex<()>>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
+static GLOBAL_GIT_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
+static HISTORY_CACHES: Lazy<Mutex<HashMap<String, HistoryCache>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+static CHERRY_PICK_ASSESSMENTS: Lazy<Mutex<HashMap<String, CherryPickApplicability>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+static CHANGE_CACHES: Lazy<Mutex<HashMap<String, ChangeCache>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+static BRANCH_CACHES: Lazy<Mutex<HashMap<String, BranchCache>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 static CREDENTIAL_URL: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)(https?://)([^/@\s:]+):([^/@\s]+)@").expect("valid credential regex")
 });
+static CREDENTIAL_USER_URL: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)(https?://)([^/@\s:]+)@").expect("valid credential user regex"));
+
+#[derive(Debug)]
+struct HistoryCache {
+    head_key: String,
+    oids: Vec<Oid>,
+    commits: Vec<CommitSummary>,
+    lanes: Vec<String>,
+    requests: Option<mpsc::Sender<usize>>,
+    responses: mpsc::Receiver<Result<(Vec<Oid>, bool), String>>,
+    worker: Option<JoinHandle<()>>,
+    exhausted: bool,
+}
+
+impl Drop for HistoryCache {
+    fn drop(&mut self) {
+        self.requests.take();
+        if let Some(worker) = self.worker.take() {
+            let _ = worker.join();
+        }
+    }
+}
+
+#[derive(Debug)]
+struct ChangeCache {
+    generation: u64,
+    files: Vec<FileChange>,
+}
+
+#[derive(Debug)]
+struct BranchCache {
+    generation: u64,
+    branches: Vec<BranchInfo>,
+}
 
 pub fn git_version() -> Result<String, String> {
-    let output = Command::new("git")
+    let mut command = Command::new("git");
+    hide_console_window(&mut command);
+    let output = command
         .arg("--version")
         .output()
         .map_err(|error| format!("Git was not found: {error}"))?;
@@ -38,6 +87,37 @@ pub fn git_version() -> Result<String, String> {
         return Err(String::from_utf8_lossy(&output.stderr).trim().to_owned());
     }
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
+}
+
+pub fn git_capabilities() -> Result<GitCapabilities, String> {
+    let version = git_version()?;
+    let numbers = version
+        .split_whitespace()
+        .find(|part| {
+            part.chars()
+                .next()
+                .is_some_and(|value| value.is_ascii_digit())
+        })
+        .unwrap_or_default()
+        .split('.')
+        .take(3)
+        .map(|part| {
+            part.chars()
+                .take_while(|value| value.is_ascii_digit())
+                .collect::<String>()
+                .parse::<u32>()
+                .unwrap_or_default()
+        })
+        .collect::<Vec<_>>();
+    let major = numbers.first().copied().unwrap_or_default();
+    let minor = numbers.get(1).copied().unwrap_or_default();
+    let at_least = |required_minor| major > 2 || (major == 2 && minor >= required_minor);
+    Ok(GitCapabilities {
+        version,
+        supports_repository_setup: at_least(28),
+        supports_fixed_value_config: at_least(31),
+        supports_sparse_checkout: at_least(25),
+    })
 }
 
 pub fn open_repository(path: String) -> Result<RepositorySnapshot, String> {
@@ -63,6 +143,151 @@ pub fn refresh_working_tree(path: String) -> Result<WorkingTreeSnapshot, String>
         state: map_repository_state(repo.state()),
         files: collect_status(&repo)?,
     })
+}
+
+pub fn open_repository_paged(
+    path: String,
+    change_limit: u32,
+) -> Result<RepositorySnapshotPage, String> {
+    let repo = Repository::discover(&path).map_err(format_git_error)?;
+    let mut snapshot = build_snapshot(&repo)?;
+    let files = std::mem::take(&mut snapshot.files);
+    let branches = std::mem::take(&mut snapshot.branches);
+    let changes = replace_change_cache(
+        snapshot.workdir.clone(),
+        snapshot.generation,
+        files,
+        change_limit,
+    );
+    let branches =
+        replace_branch_cache(snapshot.workdir.clone(), snapshot.generation, branches, 250);
+    Ok(RepositorySnapshotPage {
+        snapshot,
+        changes,
+        branches,
+    })
+}
+
+pub fn refresh_repository_paged(
+    path: String,
+    change_limit: u32,
+) -> Result<RepositorySnapshotPage, String> {
+    open_repository_paged(path, change_limit)
+}
+
+pub fn refresh_working_tree_paged(
+    path: String,
+    change_limit: u32,
+) -> Result<WorkingTreeSnapshotPage, String> {
+    let repo = Repository::discover(&path).map_err(format_git_error)?;
+    let workdir = repo
+        .workdir()
+        .ok_or_else(|| "Bare repositories are not supported in the desktop view.".to_owned())?;
+    let canonical = workdir
+        .canonicalize()
+        .unwrap_or_else(|_| workdir.to_path_buf());
+    let repository_path = display_path(&canonical);
+    let generation = next_generation(&repository_path);
+    let files = collect_status(&repo)?;
+    let changes = replace_change_cache(repository_path, generation, files, change_limit);
+    Ok(WorkingTreeSnapshotPage {
+        snapshot: WorkingTreeSnapshot {
+            generation,
+            state: map_repository_state(repo.state()),
+            files: Vec::new(),
+        },
+        changes,
+    })
+}
+
+pub fn list_changes_cursor(
+    path: String,
+    cursor: String,
+    limit: u32,
+) -> Result<FileChangePage, String> {
+    let repo = Repository::discover(&path).map_err(format_git_error)?;
+    let workdir = repo
+        .workdir()
+        .ok_or_else(|| "Bare repositories are not supported in the desktop view.".to_owned())?;
+    let cache_key = display_path(
+        workdir
+            .canonicalize()
+            .unwrap_or_else(|_| workdir.to_path_buf()),
+    );
+    let (generation, position) = cursor
+        .split_once(':')
+        .ok_or_else(|| "The change cursor is invalid. Refresh the changes.".to_owned())?;
+    let generation = generation
+        .parse::<u64>()
+        .map_err(|_| "The change cursor is invalid. Refresh the changes.".to_owned())?;
+    let position = position
+        .parse::<usize>()
+        .map_err(|_| "The change cursor is invalid. Refresh the changes.".to_owned())?;
+    let caches = CHANGE_CACHES.lock();
+    let cache = caches
+        .get(&cache_key)
+        .filter(|cache| cache.generation == generation)
+        .ok_or_else(|| "The working tree changed. Refresh the changes.".to_owned())?;
+    if position > cache.files.len() {
+        return Err("The change cursor is out of sequence. Refresh the changes.".to_owned());
+    }
+    Ok(change_page(cache, position, limit))
+}
+
+pub fn list_branches_cursor(
+    path: String,
+    cursor: String,
+    limit: u32,
+) -> Result<BranchPage, String> {
+    let repo = Repository::discover(&path).map_err(format_git_error)?;
+    let workdir = repo
+        .workdir()
+        .ok_or_else(|| "Bare repositories are not supported in the desktop view.".to_owned())?;
+    let cache_key = display_path(
+        workdir
+            .canonicalize()
+            .unwrap_or_else(|_| workdir.to_path_buf()),
+    );
+    let (generation, position) = cursor
+        .split_once(':')
+        .ok_or_else(|| "The branch cursor is invalid. Refresh the branches.".to_owned())?;
+    let generation = generation
+        .parse::<u64>()
+        .map_err(|_| "The branch cursor is invalid. Refresh the branches.".to_owned())?;
+    let position = position
+        .parse::<usize>()
+        .map_err(|_| "The branch cursor is invalid. Refresh the branches.".to_owned())?;
+    let caches = BRANCH_CACHES.lock();
+    let cache = caches
+        .get(&cache_key)
+        .filter(|cache| cache.generation == generation)
+        .ok_or_else(|| "The repository refs changed. Refresh the branches.".to_owned())?;
+    if position > cache.branches.len() {
+        return Err("The branch cursor is out of sequence. Refresh the branches.".to_owned());
+    }
+    Ok(branch_page(cache, position, limit))
+}
+
+pub fn get_cached_file_change(
+    path: String,
+    file_path: String,
+) -> Result<Option<FileChange>, String> {
+    let repo = Repository::discover(&path).map_err(format_git_error)?;
+    let workdir = repo
+        .workdir()
+        .ok_or_else(|| "Bare repositories are not supported in the desktop view.".to_owned())?;
+    let cache_key = display_path(
+        workdir
+            .canonicalize()
+            .unwrap_or_else(|_| workdir.to_path_buf()),
+    );
+    Ok(CHANGE_CACHES.lock().get(&cache_key).and_then(|cache| {
+        cache
+            .files
+            .iter()
+            .find(|file| file.path == file_path)
+            .cloned()
+    }))
 }
 
 pub fn watch_repository(
@@ -201,6 +426,14 @@ fn head_information(repo: &Repository) -> Result<HeadInformation, String> {
 }
 
 fn collect_status(repo: &Repository) -> Result<Vec<FileChange>, String> {
+    const INDEX_ENTRY_SKIP_WORKTREE: u16 = 0x4000;
+    let sparse_excluded = repo
+        .index()
+        .map_err(format_git_error)?
+        .iter()
+        .filter(|entry| entry.flags_extended & INDEX_ENTRY_SKIP_WORKTREE != 0)
+        .map(|entry| String::from_utf8_lossy(&entry.path).replace('\\', "/"))
+        .collect::<HashSet<_>>();
     let mut options = StatusOptions::new();
     options
         .include_untracked(true)
@@ -215,6 +448,13 @@ fn collect_status(repo: &Repository) -> Result<Vec<FileChange>, String> {
     for entry in statuses.iter() {
         let status = entry.status();
         let path = entry.path().unwrap_or_default().replace('\\', "/");
+        if sparse_excluded.contains(&path)
+            && status.is_wt_deleted()
+            && !status.is_index_deleted()
+            && !status.is_conflicted()
+        {
+            continue;
+        }
         let old_path = entry
             .head_to_index()
             .or_else(|| entry.index_to_workdir())
@@ -232,6 +472,92 @@ fn collect_status(repo: &Repository) -> Result<Vec<FileChange>, String> {
     }
     files.sort_by_cached_key(|file| (!file.conflicted, !file.untracked, file.path.to_lowercase()));
     Ok(files)
+}
+
+fn replace_change_cache(
+    cache_key: String,
+    generation: u64,
+    files: Vec<FileChange>,
+    limit: u32,
+) -> FileChangePage {
+    let mut caches = CHANGE_CACHES.lock();
+    caches.insert(cache_key.clone(), ChangeCache { generation, files });
+    if caches.len() > 8 {
+        let oldest = caches.keys().find(|key| *key != &cache_key).cloned();
+        if let Some(oldest) = oldest {
+            caches.remove(&oldest);
+        }
+    }
+    change_page(
+        caches.get(&cache_key).expect("change cache inserted"),
+        0,
+        limit,
+    )
+}
+
+fn change_page(cache: &ChangeCache, start: usize, limit: u32) -> FileChangePage {
+    let end = start
+        .saturating_add(limit.clamp(1, 1000) as usize)
+        .min(cache.files.len());
+    let staged_count = cache
+        .files
+        .iter()
+        .filter(|file| file.staged != ChangeKind::None)
+        .count();
+    let unstaged_count = cache
+        .files
+        .iter()
+        .filter(|file| file.unstaged != ChangeKind::None)
+        .count();
+    let conflict_count = cache.files.iter().filter(|file| file.conflicted).count();
+    let untracked_count = cache.files.iter().filter(|file| file.untracked).count();
+    FileChangePage {
+        files: cache.files.get(start..end).unwrap_or_default().to_vec(),
+        next_cursor: (end < cache.files.len()).then(|| format!("{}:{end}", cache.generation)),
+        total_files: cache.files.len().min(u32::MAX as usize) as u32,
+        staged_count: staged_count.min(u32::MAX as usize) as u32,
+        unstaged_count: unstaged_count.min(u32::MAX as usize) as u32,
+        conflict_count: conflict_count.min(u32::MAX as usize) as u32,
+        untracked_count: untracked_count.min(u32::MAX as usize) as u32,
+    }
+}
+
+fn replace_branch_cache(
+    cache_key: String,
+    generation: u64,
+    branches: Vec<BranchInfo>,
+    limit: u32,
+) -> BranchPage {
+    let mut caches = BRANCH_CACHES.lock();
+    caches.insert(
+        cache_key.clone(),
+        BranchCache {
+            generation,
+            branches,
+        },
+    );
+    if caches.len() > 8 {
+        let oldest = caches.keys().find(|key| *key != &cache_key).cloned();
+        if let Some(oldest) = oldest {
+            caches.remove(&oldest);
+        }
+    }
+    branch_page(
+        caches.get(&cache_key).expect("branch cache inserted"),
+        0,
+        limit,
+    )
+}
+
+fn branch_page(cache: &BranchCache, start: usize, limit: u32) -> BranchPage {
+    let end = start
+        .saturating_add(limit.clamp(1, 1000) as usize)
+        .min(cache.branches.len());
+    BranchPage {
+        branches: cache.branches.get(start..end).unwrap_or_default().to_vec(),
+        next_cursor: (end < cache.branches.len()).then(|| format!("{}:{end}", cache.generation)),
+        total_branches: cache.branches.len().min(u32::MAX as usize) as u32,
+    }
 }
 
 fn staged_kind(status: Status) -> ChangeKind {
@@ -422,6 +748,219 @@ pub fn list_commits(path: String, offset: u32, limit: u32) -> Result<CommitPage,
     Ok(CommitPage {
         commits: raw,
         next_offset: has_more.then_some(offset + requested as u32),
+    })
+}
+
+fn start_history_cache(path: String, head_key: String) -> HistoryCache {
+    let (request_sender, request_receiver) = mpsc::channel::<usize>();
+    let (response_sender, response_receiver) = mpsc::channel::<Result<(Vec<Oid>, bool), String>>();
+    let worker = thread::spawn(move || {
+        let requested = match request_receiver.recv() {
+            Ok(requested) => requested,
+            Err(_) => return,
+        };
+        let repo = match Repository::discover(path) {
+            Ok(repo) => repo,
+            Err(error) => {
+                let _ = response_sender.send(Err(format_git_error(error)));
+                return;
+            }
+        };
+        let mut revwalk = match repo.revwalk() {
+            Ok(revwalk) => revwalk,
+            Err(error) => {
+                let _ = response_sender.send(Err(format_git_error(error)));
+                return;
+            }
+        };
+        if let Err(error) = revwalk.push_head() {
+            if error.code() == ErrorCode::UnbornBranch || error.code() == ErrorCode::NotFound {
+                let _ = response_sender.send(Ok((Vec::new(), true)));
+            } else {
+                let _ = response_sender.send(Err(format_git_error(error)));
+            }
+            return;
+        }
+        if let Err(error) = revwalk.set_sorting(Sort::TOPOLOGICAL | Sort::TIME) {
+            let _ = response_sender.send(Err(format_git_error(error)));
+            return;
+        }
+
+        let mut requested = requested;
+        loop {
+            let mut oids = Vec::with_capacity(requested);
+            let mut exhausted = false;
+            for _ in 0..requested {
+                match revwalk.next() {
+                    Some(Ok(oid)) => oids.push(oid),
+                    Some(Err(error)) => {
+                        let _ = response_sender.send(Err(format_git_error(error)));
+                        return;
+                    }
+                    None => {
+                        exhausted = true;
+                        break;
+                    }
+                }
+            }
+            if response_sender.send(Ok((oids, exhausted))).is_err() || exhausted {
+                return;
+            }
+            requested = match request_receiver.recv() {
+                Ok(requested) => requested,
+                Err(_) => return,
+            };
+        }
+    });
+
+    HistoryCache {
+        head_key,
+        oids: Vec::new(),
+        commits: Vec::new(),
+        lanes: Vec::new(),
+        requests: Some(request_sender),
+        responses: response_receiver,
+        worker: Some(worker),
+        exhausted: false,
+    }
+}
+
+fn ensure_history_oids(cache: &mut HistoryCache, required: usize) -> Result<(), String> {
+    while cache.oids.len() < required && !cache.exhausted {
+        let requested = required - cache.oids.len();
+        cache
+            .requests
+            .as_ref()
+            .ok_or_else(|| "The history reader stopped unexpectedly. Refresh the log.".to_owned())?
+            .send(requested)
+            .map_err(|_| "The history reader stopped unexpectedly. Refresh the log.".to_owned())?;
+        let (oids, exhausted) = cache.responses.recv().map_err(|_| {
+            "The history reader stopped unexpectedly. Refresh the log.".to_owned()
+        })??;
+        cache.oids.extend(oids);
+        cache.exhausted = exhausted;
+        if exhausted {
+            cache.requests.take();
+        }
+    }
+    Ok(())
+}
+
+/// Returns a stable cursor page without replaying or fully consuming the
+/// revwalk for every page.
+///
+/// A background reader owns the revwalk and advances it only far enough to
+/// produce the visible page plus one look-ahead commit. Commit metadata and
+/// graph lanes are materialized lazily as pages become visible. A cursor is
+/// tied to the current HEAD and is rejected after history changes.
+pub fn list_commits_cursor(
+    path: String,
+    cursor: Option<String>,
+    limit: u32,
+) -> Result<CommitCursorPage, String> {
+    let repo = Repository::discover(&path).map_err(format_git_error)?;
+    let workdir = repo
+        .workdir()
+        .ok_or_else(|| "Bare repositories are not supported in the desktop view.".to_owned())?;
+    let cache_key = display_path(
+        workdir
+            .canonicalize()
+            .unwrap_or_else(|_| workdir.to_path_buf()),
+    );
+    let head_key = repo
+        .head()
+        .ok()
+        .and_then(|head| head.peel_to_commit().ok())
+        .map(|commit| commit.id().to_string())
+        .unwrap_or_else(|| "unborn".to_owned());
+
+    let requested = limit.clamp(1, 500) as usize;
+    let start = match cursor.as_deref() {
+        None => 0,
+        Some(value) => {
+            let (cursor_head, position) = value
+                .rsplit_once(':')
+                .ok_or_else(|| "The history cursor is invalid. Refresh the log.".to_owned())?;
+            if cursor_head != head_key {
+                return Err("The repository history changed. Refresh the log.".to_owned());
+            }
+            position
+                .parse::<usize>()
+                .map_err(|_| "The history cursor is invalid. Refresh the log.".to_owned())?
+        }
+    };
+
+    let mut caches = HISTORY_CACHES.lock();
+    let rebuild = cursor.is_none()
+        || caches
+            .get(&cache_key)
+            .is_none_or(|cache| cache.head_key != head_key);
+    if rebuild {
+        caches.insert(
+            cache_key.clone(),
+            start_history_cache(cache_key.clone(), head_key.clone()),
+        );
+        if caches.len() > 8 {
+            let oldest = caches.keys().find(|key| *key != &cache_key).cloned();
+            if let Some(oldest) = oldest {
+                caches.remove(&oldest);
+            }
+        }
+    }
+    let cache = caches.get_mut(&cache_key).expect("history cache inserted");
+    if start > cache.commits.len() {
+        return Err("The history cursor is out of sequence. Refresh the log.".to_owned());
+    }
+    ensure_history_oids(cache, start.saturating_add(requested).saturating_add(1))?;
+    let end = start.saturating_add(requested).min(cache.oids.len());
+    if end > cache.commits.len() {
+        let mut new_commits = Vec::with_capacity(end - cache.commits.len());
+        for oid in &cache.oids[cache.commits.len()..end] {
+            let commit = repo.find_commit(*oid).map_err(format_git_error)?;
+            new_commits.push(CommitSummary {
+                oid: oid.to_string(),
+                short_oid: oid.to_string()[..8].to_owned(),
+                summary: commit
+                    .summary()
+                    .ok()
+                    .flatten()
+                    .unwrap_or("(no message)")
+                    .to_owned(),
+                author_name: commit.author().name().unwrap_or("Unknown").to_owned(),
+                author_email: commit.author().email().unwrap_or_default().to_owned(),
+                authored_at: commit.author().when().seconds(),
+                parent_oids: commit
+                    .parent_ids()
+                    .map(|parent| parent.to_string())
+                    .collect(),
+                references: Vec::new(),
+                lane: GraphLane {
+                    column: 0,
+                    parent_columns: Vec::new(),
+                },
+            });
+        }
+        let visible_oids = new_commits
+            .iter()
+            .filter_map(|commit| Oid::from_str(&commit.oid).ok())
+            .collect::<HashSet<_>>();
+        let references = references_by_oid(&repo, &visible_oids)?;
+        for commit in &mut new_commits {
+            if let Ok(oid) = Oid::from_str(&commit.oid) {
+                commit.references = references.get(&oid).cloned().unwrap_or_default();
+            }
+        }
+        assign_graph_lanes_with_state(&mut new_commits, &mut cache.lanes);
+        cache.commits.extend(new_commits);
+    }
+
+    Ok(CommitCursorPage {
+        commits: cache.commits[start..end].to_vec(),
+        next_cursor: (end < cache.oids.len() || !cache.exhausted)
+            .then(|| format!("{head_key}:{end}")),
+        // Until the reader reaches the end this is a lower bound, not an
+        // eagerly computed repository-wide total.
+        total_commits: cache.oids.len().min(u32::MAX as usize) as u32,
     })
 }
 
@@ -686,6 +1225,10 @@ fn reference_rank(kind: &CommitReferenceKind) -> u8 {
 
 fn assign_graph_lanes(commits: &mut [CommitSummary]) {
     let mut lanes: Vec<String> = Vec::new();
+    assign_graph_lanes_with_state(commits, &mut lanes);
+}
+
+fn assign_graph_lanes_with_state(commits: &mut [CommitSummary], lanes: &mut Vec<String>) {
     for commit in commits {
         let column = if let Some(index) = lanes.iter().position(|oid| oid == &commit.oid) {
             index
@@ -723,20 +1266,53 @@ fn assign_graph_lanes(commits: &mut [CommitSummary]) {
 }
 
 pub fn stage_paths(path: String, paths: Vec<String>) -> Result<OperationResult, String> {
-    let mut args = vec!["add".to_owned(), "--".to_owned()];
-    args.extend(paths);
-    run_git(&path, args, None, &[])
+    let input = nul_pathspec(&paths)?;
+    run_git(
+        &path,
+        vec![
+            "add".to_owned(),
+            "--pathspec-from-file=-".to_owned(),
+            "--pathspec-file-nul".to_owned(),
+        ],
+        Some(input),
+        &[],
+    )
 }
 
 pub fn unstage_paths(path: String, paths: Vec<String>) -> Result<OperationResult, String> {
     let repo = Repository::discover(&path).map_err(format_git_error)?;
-    let mut args = if repo.head().is_ok() {
-        vec!["restore".to_owned(), "--staged".to_owned(), "--".to_owned()]
+    let input = nul_pathspec(&paths)?;
+    let args = if repo.head().is_ok() {
+        vec![
+            "restore".to_owned(),
+            "--staged".to_owned(),
+            "--pathspec-from-file=-".to_owned(),
+            "--pathspec-file-nul".to_owned(),
+        ]
     } else {
-        vec!["rm".to_owned(), "--cached".to_owned(), "--".to_owned()]
+        vec![
+            "rm".to_owned(),
+            "--cached".to_owned(),
+            "--pathspec-from-file=-".to_owned(),
+            "--pathspec-file-nul".to_owned(),
+        ]
     };
-    args.extend(paths);
-    run_git(&path, args, None, &[])
+    run_git(&path, args, Some(input), &[])
+}
+
+pub fn intent_to_add(path: String, paths: Vec<String>) -> Result<OperationResult, String> {
+    let input = nul_pathspec(&paths)?;
+    run_git(
+        &path,
+        vec![
+            "add".to_owned(),
+            "--intent-to-add".to_owned(),
+            "--pathspec-from-file=-".to_owned(),
+            "--pathspec-file-nul".to_owned(),
+        ],
+        Some(input),
+        &[],
+    )
 }
 
 pub fn apply_hunk(
@@ -781,6 +1357,54 @@ pub fn apply_hunk(
     run_git(&path, apply_args, Some(selected.into_bytes()), &[])
 }
 
+pub fn apply_hunk_lines(
+    path: String,
+    file_path: String,
+    staged: bool,
+    hunk_index: u32,
+    line_indices: Vec<u32>,
+    expected_fingerprint: String,
+    reverse: bool,
+) -> Result<OperationResult, String> {
+    let args = if staged {
+        vec![
+            "diff".to_owned(),
+            "--cached".to_owned(),
+            "--".to_owned(),
+            file_path,
+        ]
+    } else {
+        vec!["diff".to_owned(), "--".to_owned(), file_path]
+    };
+    let patch = run_git_capture(&path, args, &[])?;
+    if !patch.status.success() {
+        return Ok(result_from_output("load selected lines", patch));
+    }
+    let patch_text = String::from_utf8_lossy(&patch.stdout).into_owned();
+    let fingerprint = format!("{:x}", Sha256::digest(patch_text.as_bytes()));
+    if fingerprint != expected_fingerprint {
+        return Err(
+            "The file changed after the diff was loaded. Refresh and try again.".to_owned(),
+        );
+    }
+    let selected = select_hunk_lines(
+        &patch_text,
+        hunk_index as usize,
+        &line_indices.into_iter().collect(),
+        reverse,
+    )?;
+    let mut apply_args = vec!["apply".to_owned(), "--recount".to_owned()];
+    if !reverse || staged {
+        apply_args.push("--cached".to_owned());
+    }
+    if reverse {
+        apply_args.push("--reverse".to_owned());
+    }
+    apply_args.push("--whitespace=nowarn".to_owned());
+    apply_args.push("-".to_owned());
+    run_git(&path, apply_args, Some(selected.into_bytes()), &[])
+}
+
 pub fn discard_file(
     path: String,
     file_path: String,
@@ -813,15 +1437,141 @@ pub fn discard_file(
 }
 
 pub fn create_commit(path: String, message: String) -> Result<OperationResult, String> {
-    if message.trim().is_empty() {
-        return Err("A commit message is required.".to_owned());
-    }
-    run_git(
+    create_commit_with_options(
+        path,
+        CommitOptions {
+            message: Some(message),
+            amend: false,
+            signoff: false,
+            signing: CommitSigningMode::UseConfig,
+            author_name: None,
+            author_email: None,
+            authored_at: None,
+            allow_empty: false,
+            fixup_target: None,
+            squash_target: None,
+        },
+    )
+}
+
+pub fn load_commit_defaults(path: String) -> Result<CommitDefaults, String> {
+    let repo = Repository::discover(&path).map_err(format_git_error)?;
+    let config = repo.config().map_err(format_git_error)?;
+    let cleanup = config.get_string("commit.cleanup").ok();
+    let signing_enabled = config.get_bool("commit.gpgsign").unwrap_or(false);
+    let previous_message = repo
+        .head()
+        .ok()
+        .and_then(|head| head.peel_to_commit().ok())
+        .and_then(|commit| commit.message().ok().map(str::to_owned));
+    let template = run_git_capture(
         &path,
-        vec!["commit".to_owned(), "-m".to_owned(), message],
-        None,
+        vec![
+            "config".to_owned(),
+            "--path".to_owned(),
+            "--get".to_owned(),
+            "commit.template".to_owned(),
+        ],
         &[],
     )
+    .ok()
+    .filter(|output| output.status.success())
+    .and_then(|output| {
+        let value = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+        (!value.is_empty()).then_some(value)
+    })
+    .and_then(|template_path| {
+        let template_path = PathBuf::from(template_path);
+        let resolved = if template_path.is_absolute() {
+            template_path
+        } else {
+            repo.workdir().unwrap_or(repo.path()).join(template_path)
+        };
+        fs::read_to_string(resolved).ok()
+    })
+    .unwrap_or_default();
+    Ok(CommitDefaults {
+        template,
+        cleanup,
+        signing_enabled,
+        previous_message,
+    })
+}
+
+pub fn create_commit_with_options(
+    path: String,
+    options: CommitOptions,
+) -> Result<OperationResult, String> {
+    let repo = Repository::discover(&path).map_err(format_git_error)?;
+    ensure_no_operation_in_progress(&repo)?;
+    let special_count = usize::from(options.amend)
+        + usize::from(options.fixup_target.is_some())
+        + usize::from(options.squash_target.is_some());
+    if special_count > 1 {
+        return Err("Amend, fixup, and squash cannot be combined.".to_owned());
+    }
+    for target in [&options.fixup_target, &options.squash_target]
+        .into_iter()
+        .flatten()
+    {
+        find_commit(&repo, target)?;
+    }
+    let message = options.message.as_deref().map(str::trim);
+    if message.is_some_and(str::is_empty) {
+        return Err("A commit message cannot be blank.".to_owned());
+    }
+    if message.is_none()
+        && !options.amend
+        && options.fixup_target.is_none()
+        && options.squash_target.is_none()
+    {
+        return Err("A commit message is required.".to_owned());
+    }
+    if options.author_name.is_some() != options.author_email.is_some() {
+        return Err("Provide both the author name and email, or leave both empty.".to_owned());
+    }
+
+    let mut args = vec!["commit".to_owned()];
+    if options.amend {
+        args.push("--amend".to_owned());
+    }
+    if options.signoff {
+        args.push("--signoff".to_owned());
+    }
+    match options.signing {
+        CommitSigningMode::UseConfig => {}
+        CommitSigningMode::Sign => args.push("--gpg-sign".to_owned()),
+        CommitSigningMode::DoNotSign => args.push("--no-gpg-sign".to_owned()),
+    }
+    if options.allow_empty {
+        args.push("--allow-empty".to_owned());
+    }
+    if let Some(target) = options.fixup_target {
+        args.push(format!("--fixup={target}"));
+    }
+    if let Some(target) = options.squash_target {
+        args.push(format!("--squash={target}"));
+    }
+    if let (Some(name), Some(email)) = (options.author_name, options.author_email) {
+        validate_identity(&name, &email)?;
+        args.extend(["--author".to_owned(), format!("{name} <{email}>")]);
+    }
+    if let Some(date) = options.authored_at {
+        if date.contains(['\r', '\n']) {
+            return Err("The author date is invalid.".to_owned());
+        }
+        args.push(format!("--date={date}"));
+    }
+    let stdin = if let Some(message) = options.message {
+        args.extend(["--file".to_owned(), "-".to_owned()]);
+        Some(message.into_bytes())
+    } else {
+        if options.amend {
+            args.push("--no-edit".to_owned());
+        }
+        None
+    };
+    run_git(&path, args, stdin, &[])
 }
 
 pub fn create_tag(
@@ -874,6 +1624,65 @@ pub fn cherry_pick_commit(
     }
     args.push(oid);
     run_git(&path, args, None, &[])
+}
+
+/// Simulates a single-commit cherry-pick against HEAD without changing the
+/// repository. Unlike an ancestry or patch-id check, this correctly allows an
+/// old commit whose effect was removed by a later revert.
+pub fn assess_cherry_pick(
+    path: String,
+    oid: String,
+    mainline_parent: Option<u32>,
+) -> Result<CherryPickApplicability, String> {
+    let repo = Repository::discover(&path).map_err(format_git_error)?;
+    let commit = find_commit(&repo, &oid)?;
+    validate_mainline(&commit, mainline_parent)?;
+    let head = repo
+        .head()
+        .map_err(format_git_error)?
+        .peel_to_commit()
+        .map_err(format_git_error)?;
+    let workdir = repo
+        .workdir()
+        .ok_or_else(|| "A working tree is required.".to_owned())?;
+    let cache_key = format!(
+        "{}\0{}\0{}\0{}",
+        display_path(
+            workdir
+                .canonicalize()
+                .unwrap_or_else(|_| workdir.to_path_buf())
+        ),
+        head.id(),
+        commit.id(),
+        mainline_parent.unwrap_or(0),
+    );
+    if let Some(cached) = CHERRY_PICK_ASSESSMENTS.lock().get(&cache_key).cloned() {
+        return Ok(cached);
+    }
+
+    let index = repo
+        .cherrypick_commit(&commit, &head, mainline_parent.unwrap_or(0), None)
+        .map_err(format_git_error)?;
+    let applicability = if index.has_conflicts() {
+        CherryPickApplicability::Conflicts
+    } else {
+        let head_tree = head.tree().map_err(format_git_error)?;
+        let diff = repo
+            .diff_tree_to_index(Some(&head_tree), Some(&index), None)
+            .map_err(format_git_error)?;
+        if diff.deltas().next().is_none() {
+            CherryPickApplicability::AlreadyApplied
+        } else {
+            CherryPickApplicability::Applicable
+        }
+    };
+
+    let mut cache = CHERRY_PICK_ASSESSMENTS.lock();
+    if cache.len() >= 512 {
+        cache.clear();
+    }
+    cache.insert(cache_key, applicability.clone());
+    Ok(applicability)
 }
 
 pub fn control_cherry_pick(
@@ -966,8 +1775,114 @@ pub fn reset_to_commit(
     Ok(result)
 }
 
+pub fn initialize_repository(
+    options: RepositoryInitOptions,
+) -> Result<RepositoryInitResult, String> {
+    let target = PathBuf::from(options.target_path.trim());
+    if options.target_path.trim().is_empty() {
+        return Err("Choose a repository folder.".to_owned());
+    }
+    if target.exists() && !target.is_dir() {
+        return Err("The repository path is not a folder.".to_owned());
+    }
+    if target.exists() && Repository::discover(&target).is_ok() {
+        return Err("The selected folder is already inside a Git repository.".to_owned());
+    }
+    validate_branch_name(&options.initial_branch)?;
+    validate_optional_url(options.origin_url.as_deref())?;
+
+    fs::create_dir_all(&target).map_err(|error| error.to_string())?;
+    let target_text = display_path(&target);
+    let mut operation = run_git_without_repo_named(
+        "git init",
+        vec![
+            "init".to_owned(),
+            "-b".to_owned(),
+            options.initial_branch,
+            target_text.clone(),
+        ],
+    )?;
+    let mut warnings = Vec::new();
+    if !operation.success {
+        return Ok(RepositoryInitResult {
+            path: target_text,
+            operation,
+            warnings,
+        });
+    }
+
+    if options.create_readme {
+        let readme = target.join("README.md");
+        if readme.exists() {
+            warnings.push("README.md already exists and was not overwritten.".to_owned());
+        } else {
+            let name = target
+                .file_name()
+                .and_then(|value| value.to_str())
+                .filter(|value| !value.is_empty())
+                .unwrap_or("Repository");
+            if let Err(error) = fs::write(&readme, format!("# {name}\n")) {
+                warnings.push(format!("README.md could not be created: {error}"));
+            }
+        }
+    }
+    if let Some(contents) = gitignore_contents(&options.gitignore_template) {
+        let gitignore = target.join(".gitignore");
+        if gitignore.exists() {
+            warnings.push(".gitignore already exists and was not overwritten.".to_owned());
+        } else if let Err(error) = fs::write(&gitignore, contents) {
+            warnings.push(format!(".gitignore could not be created: {error}"));
+        }
+    }
+    if let Some(url) = options.origin_url.filter(|value| !value.trim().is_empty()) {
+        let remote = run_git(
+            &target_text,
+            vec![
+                "remote".to_owned(),
+                "add".to_owned(),
+                "origin".to_owned(),
+                url,
+            ],
+            None,
+            &[],
+        )?;
+        append_operation(&mut operation, &remote);
+    }
+    Ok(RepositoryInitResult {
+        path: target_text,
+        operation,
+        warnings,
+    })
+}
+
 pub fn clone_repository(url: String, target: String) -> Result<OperationResult, String> {
-    let target_path = Path::new(&target);
+    Ok(clone_repository_advanced(CloneOptions {
+        url,
+        target,
+        remote_name: "origin".to_owned(),
+        branch: None,
+        depth: None,
+        single_branch: false,
+        no_tags: false,
+        recurse_submodules: false,
+        shallow_submodules: false,
+        blobless: false,
+        sparse_directories: Vec::new(),
+    })?
+    .operation)
+}
+
+pub fn clone_repository_advanced(options: CloneOptions) -> Result<CloneResult, String> {
+    validate_optional_url(Some(&options.url))?;
+    validate_remote_name(&options.remote_name)?;
+    if let Some(branch) = options.branch.as_deref() {
+        validate_ref_name(branch)?;
+    }
+    if options.depth == Some(0) {
+        return Err("Clone depth must be greater than zero.".to_owned());
+    }
+    let sparse = normalize_sparse_directories(options.sparse_directories)?;
+    let target_path = Path::new(&options.target);
     if target_path.exists()
         && target_path
             .read_dir()
@@ -977,8 +1892,356 @@ pub fn clone_repository(url: String, target: String) -> Result<OperationResult, 
     {
         return Err("The clone destination must be empty.".to_owned());
     }
-    let args = vec!["clone".to_owned(), "--progress".to_owned(), url, target];
-    run_git_without_repo(args)
+    let mut args = vec!["clone".to_owned(), "--progress".to_owned()];
+    if options.remote_name != "origin" {
+        args.extend(["--origin".to_owned(), options.remote_name]);
+    }
+    if let Some(branch) = options.branch {
+        args.extend(["--branch".to_owned(), branch]);
+    }
+    if let Some(depth) = options.depth {
+        args.extend(["--depth".to_owned(), depth.to_string()]);
+    }
+    if options.single_branch {
+        args.push("--single-branch".to_owned());
+    }
+    if options.no_tags {
+        args.push("--no-tags".to_owned());
+    }
+    if options.recurse_submodules {
+        args.push("--recurse-submodules".to_owned());
+    }
+    if options.shallow_submodules {
+        if !options.recurse_submodules {
+            return Err("Shallow submodules require recursive submodule clone.".to_owned());
+        }
+        args.push("--shallow-submodules".to_owned());
+    }
+    if options.blobless {
+        args.extend(["--filter".to_owned(), "blob:none".to_owned()]);
+    }
+    if !sparse.is_empty() {
+        args.push("--sparse".to_owned());
+    }
+    args.extend([options.url, options.target.clone()]);
+    let mut operation = run_git_without_repo_named("git clone", args)?;
+    let mut warnings = Vec::new();
+    if operation.success && !sparse.is_empty() {
+        let sparse_result = run_git(
+            &options.target,
+            [
+                vec![
+                    "sparse-checkout".to_owned(),
+                    "set".to_owned(),
+                    "--cone".to_owned(),
+                ],
+                sparse,
+            ]
+            .concat(),
+            None,
+            &[],
+        )?;
+        if !sparse_result.success {
+            warnings.push(
+                "The repository was cloned, but sparse checkout could not be applied.".to_owned(),
+            );
+        }
+        append_operation(&mut operation, &sparse_result);
+    }
+    Ok(CloneResult {
+        path: options.target,
+        operation,
+        warnings,
+    })
+}
+
+pub fn read_git_config(path: Option<String>) -> Result<GitConfigSnapshot, String> {
+    let mut command = Command::new("git");
+    hide_console_window(&mut command);
+    if let Some(repository) = path.as_deref() {
+        Repository::discover(repository).map_err(format_git_error)?;
+        command.args(["-C", repository]);
+    }
+    let output = command
+        .args([
+            "config",
+            "--null",
+            "--show-origin",
+            "--show-scope",
+            "--includes",
+            "--list",
+        ])
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .output()
+        .map_err(|error| format!("Git could not be started: {error}"))?;
+    if !output.status.success() {
+        return Err(redact(&String::from_utf8_lossy(&output.stderr)));
+    }
+    let fields = output.stdout.split(|byte| *byte == 0).collect::<Vec<_>>();
+    let mut entries = Vec::new();
+    for record in fields.chunks(3) {
+        if record.len() < 3 || record[0].is_empty() {
+            continue;
+        }
+        let scope_text = String::from_utf8_lossy(record[0]);
+        let scope = config_scope(&scope_text);
+        let key_value = record[2];
+        let separator = key_value
+            .iter()
+            .position(|byte| *byte == b'\n')
+            .unwrap_or(key_value.len());
+        let key = String::from_utf8_lossy(&key_value[..separator]).into_owned();
+        let value = if separator < key_value.len() {
+            &key_value[separator + 1..]
+        } else {
+            &[]
+        };
+        let sensitive = is_sensitive_config_key(&key);
+        entries.push(GitConfigEntry {
+            key,
+            value: if sensitive {
+                "••••••••".to_owned()
+            } else {
+                redact(&String::from_utf8_lossy(value))
+            },
+            scope: scope.clone(),
+            origin: display_config_origin(&String::from_utf8_lossy(record[1])),
+            inherited: path.is_some()
+                && !matches!(scope, GitConfigScope::Local | GitConfigScope::Worktree),
+            sensitive,
+        });
+    }
+    Ok(GitConfigSnapshot { entries })
+}
+
+pub fn set_git_config(
+    path: Option<String>,
+    scope: GitConfigScope,
+    key: String,
+    value: String,
+) -> Result<OperationResult, String> {
+    validate_config_key(&key)?;
+    validate_config_value(&value)?;
+    run_config_mutation(path, scope, vec!["--replace-all".to_owned(), key, value])
+}
+
+pub fn add_git_config_value(
+    path: Option<String>,
+    scope: GitConfigScope,
+    key: String,
+    value: String,
+) -> Result<OperationResult, String> {
+    validate_config_key(&key)?;
+    validate_config_value(&value)?;
+    run_config_mutation(path, scope, vec!["--add".to_owned(), key, value])
+}
+
+pub fn unset_git_config_value(
+    path: Option<String>,
+    scope: GitConfigScope,
+    key: String,
+    value: Option<String>,
+) -> Result<OperationResult, String> {
+    validate_config_key(&key)?;
+    let mut args = if value.is_some() {
+        vec!["--fixed-value".to_owned(), "--unset".to_owned(), key]
+    } else {
+        vec!["--unset-all".to_owned(), key]
+    };
+    if let Some(value) = value {
+        validate_config_value(&value)?;
+        args.push(value);
+    }
+    run_config_mutation(path, scope, args)
+}
+
+pub fn list_remote_details(path: String) -> Result<Vec<RemoteDetails>, String> {
+    let repo = Repository::discover(&path).map_err(format_git_error)?;
+    let mut result = Vec::new();
+    for name in repo.remotes().map_err(format_git_error)?.iter() {
+        let Some(name) = name.map_err(format_git_error)? else {
+            continue;
+        };
+        let fetch_urls = git_output_lines(&path, vec!["remote", "get-url", "--all", name])?;
+        let mut push_urls =
+            git_output_lines(&path, vec!["remote", "get-url", "--push", "--all", name])?;
+        if push_urls == fetch_urls {
+            push_urls.clear();
+        }
+        result.push(RemoteDetails {
+            name: name.to_owned(),
+            fetch_urls: fetch_urls.into_iter().map(|value| redact(&value)).collect(),
+            push_urls: push_urls.into_iter().map(|value| redact(&value)).collect(),
+        });
+    }
+    result.sort_by_key(|remote| remote.name.to_lowercase());
+    Ok(result)
+}
+
+pub fn add_remote(
+    path: String,
+    name: String,
+    fetch_url: String,
+) -> Result<OperationResult, String> {
+    validate_remote_name(&name)?;
+    validate_optional_url(Some(&fetch_url))?;
+    run_git(
+        &path,
+        vec!["remote".to_owned(), "add".to_owned(), name, fetch_url],
+        None,
+        &[],
+    )
+}
+
+pub fn rename_remote(
+    path: String,
+    old_name: String,
+    new_name: String,
+) -> Result<OperationResult, String> {
+    validate_remote_name(&old_name)?;
+    validate_remote_name(&new_name)?;
+    run_git(
+        &path,
+        vec!["remote".to_owned(), "rename".to_owned(), old_name, new_name],
+        None,
+        &[],
+    )
+}
+
+pub fn update_remote(
+    path: String,
+    name: String,
+    fetch_url: String,
+    push_url: Option<String>,
+) -> Result<OperationResult, String> {
+    validate_remote_name(&name)?;
+    validate_optional_url(Some(&fetch_url))?;
+    validate_optional_url(push_url.as_deref())?;
+    let mut result = run_git(
+        &path,
+        vec![
+            "remote".to_owned(),
+            "set-url".to_owned(),
+            name.clone(),
+            fetch_url,
+        ],
+        None,
+        &[],
+    )?;
+    if !result.success {
+        return Ok(result);
+    }
+    let push_result = if let Some(push_url) = push_url.filter(|value| !value.trim().is_empty()) {
+        run_git(
+            &path,
+            vec![
+                "remote".to_owned(),
+                "set-url".to_owned(),
+                "--push".to_owned(),
+                name,
+                push_url,
+            ],
+            None,
+            &[],
+        )?
+    } else {
+        run_config_mutation(
+            Some(path),
+            GitConfigScope::Local,
+            vec!["--unset-all".to_owned(), format!("remote.{name}.pushurl")],
+        )?
+    };
+    if push_result.exit_code != 5 {
+        append_operation(&mut result, &push_result);
+    }
+    Ok(result)
+}
+
+pub fn remove_remote(path: String, name: String) -> Result<OperationResult, String> {
+    validate_remote_name(&name)?;
+    run_git(
+        &path,
+        vec!["remote".to_owned(), "remove".to_owned(), name],
+        None,
+        &[],
+    )
+}
+
+pub fn create_tracking_branch(
+    path: String,
+    remote_branch: String,
+    local_branch: String,
+) -> Result<OperationResult, String> {
+    validate_ref_name(&remote_branch)?;
+    validate_branch_name(&local_branch)?;
+    run_git(
+        &path,
+        vec![
+            "switch".to_owned(),
+            "-c".to_owned(),
+            local_branch,
+            "--track".to_owned(),
+            remote_branch,
+        ],
+        None,
+        &[],
+    )
+}
+
+pub fn read_sparse_checkout(path: String) -> Result<SparseCheckoutState, String> {
+    let repo = Repository::discover(&path).map_err(format_git_error)?;
+    let config = repo.config().map_err(format_git_error)?;
+    let enabled = config.get_bool("core.sparseCheckout").unwrap_or(false);
+    let cone_mode = config.get_bool("core.sparseCheckoutCone").unwrap_or(true);
+    let directories = if enabled {
+        git_output_lines(&path, vec!["sparse-checkout", "list"])?
+    } else {
+        Vec::new()
+    };
+    Ok(SparseCheckoutState {
+        enabled,
+        cone_mode,
+        directories,
+    })
+}
+
+pub fn set_sparse_checkout(
+    path: String,
+    directories: Vec<String>,
+) -> Result<OperationResult, String> {
+    let repo = Repository::discover(&path).map_err(format_git_error)?;
+    ensure_no_operation_in_progress(&repo)?;
+    ensure_clean_tracked(&repo)?;
+    let directories = normalize_sparse_directories(directories)?;
+    if directories.is_empty() {
+        return Err("Add at least one sparse checkout directory.".to_owned());
+    }
+    run_git(
+        &path,
+        [
+            vec![
+                "sparse-checkout".to_owned(),
+                "set".to_owned(),
+                "--cone".to_owned(),
+            ],
+            directories,
+        ]
+        .concat(),
+        None,
+        &[],
+    )
+}
+
+pub fn disable_sparse_checkout(path: String) -> Result<OperationResult, String> {
+    let repo = Repository::discover(&path).map_err(format_git_error)?;
+    ensure_no_operation_in_progress(&repo)?;
+    ensure_clean_tracked(&repo)?;
+    run_git(
+        &path,
+        vec!["sparse-checkout".to_owned(), "disable".to_owned()],
+        None,
+        &[],
+    )
 }
 
 pub fn create_branch(
@@ -1091,6 +2354,33 @@ pub fn push_current(
     if set_upstream {
         args.extend(["--set-upstream".to_owned(), "origin".to_owned(), branch]);
     }
+    run_git(&path, args, None, &[])
+}
+
+pub fn push_current_to(
+    path: String,
+    remote: String,
+    remote_branch: String,
+    force_with_lease: bool,
+) -> Result<OperationResult, String> {
+    validate_remote_name(&remote)?;
+    validate_branch_name(&remote_branch)?;
+    let repo = Repository::discover(&path).map_err(format_git_error)?;
+    let branch = repo
+        .head()
+        .ok()
+        .filter(|head| head.is_branch())
+        .and_then(|head| head.shorthand().ok().map(str::to_owned))
+        .ok_or_else(|| "A checked-out local branch is required.".to_owned())?;
+    let mut args = vec!["push".to_owned()];
+    if force_with_lease {
+        args.push("--force-with-lease".to_owned());
+    }
+    args.extend([
+        "--set-upstream".to_owned(),
+        remote,
+        format!("{branch}:{remote_branch}"),
+    ]);
     run_git(&path, args, None, &[])
 }
 
@@ -1490,8 +2780,19 @@ fn run_git(
     Ok(result_from_output("git operation", output))
 }
 
-fn run_git_without_repo(args: Vec<String>) -> Result<OperationResult, String> {
+fn hide_console_window(command: &mut Command) {
+    #[cfg(windows)]
+    command.creation_flags(0x0800_0000);
+    #[cfg(not(windows))]
+    let _ = command;
+}
+
+fn run_git_without_repo_named(
+    operation: &str,
+    args: Vec<String>,
+) -> Result<OperationResult, String> {
     let mut command = Command::new("git");
+    hide_console_window(&mut command);
     command
         .args(args)
         .env("GIT_TERMINAL_PROMPT", "0")
@@ -1500,7 +2801,68 @@ fn run_git_without_repo(args: Vec<String>) -> Result<OperationResult, String> {
     let output = command
         .output()
         .map_err(|error| format!("Git could not be started: {error}"))?;
-    Ok(result_from_output("git clone", output))
+    Ok(result_from_output(operation, output))
+}
+
+fn run_config_mutation(
+    path: Option<String>,
+    scope: GitConfigScope,
+    arguments: Vec<String>,
+) -> Result<OperationResult, String> {
+    let scope_argument = match scope {
+        GitConfigScope::Local => "--local",
+        GitConfigScope::Global => "--global",
+        _ => return Err("Only repository and global Git settings can be changed.".to_owned()),
+    };
+    let args = [
+        vec!["config".to_owned(), scope_argument.to_owned()],
+        arguments,
+    ]
+    .concat();
+    if scope == GitConfigScope::Local {
+        let path = path.ok_or_else(|| "A repository is required for local settings.".to_owned())?;
+        Repository::discover(&path).map_err(format_git_error)?;
+        run_git(&path, args, None, &[])
+    } else {
+        let _guard = GLOBAL_GIT_LOCK.lock();
+        run_git_without_repo_named("git config", args)
+    }
+}
+
+fn git_output_lines(path: &str, arguments: Vec<&str>) -> Result<Vec<String>, String> {
+    let output = run_git_capture(
+        path,
+        arguments.into_iter().map(str::to_owned).collect(),
+        &[],
+    )?;
+    if !output.status.success() {
+        return Err(redact(&String::from_utf8_lossy(&output.stderr)));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_owned)
+        .collect())
+}
+
+fn append_operation(target: &mut OperationResult, addition: &OperationResult) {
+    target.success &= addition.success;
+    if !addition.success {
+        target.exit_code = addition.exit_code;
+        target.summary = addition.summary.clone();
+    }
+    for (destination, value) in [
+        (&mut target.stdout, &addition.stdout),
+        (&mut target.stderr, &addition.stderr),
+    ] {
+        if !value.trim().is_empty() {
+            if !destination.trim().is_empty() {
+                destination.push('\n');
+            }
+            destination.push_str(value);
+        }
+    }
 }
 
 fn run_git_capture(
@@ -1518,6 +2880,7 @@ fn run_git_capture_with_stdin(
     environment: &[(&str, &str)],
 ) -> Result<std::process::Output, String> {
     let mut command = Command::new("git");
+    hide_console_window(&mut command);
     command
         .arg("-C")
         .arg(path)
@@ -1589,6 +2952,86 @@ fn select_hunk(patch: &str, selected: usize) -> Result<String, String> {
     Ok(format!("{header}{hunk}"))
 }
 
+fn select_hunk_lines(
+    patch: &str,
+    hunk_index: usize,
+    selected_lines: &HashSet<u32>,
+    reverse: bool,
+) -> Result<String, String> {
+    if selected_lines.is_empty() {
+        return Err("Select at least one changed line.".to_owned());
+    }
+    let hunk_patch = select_hunk(patch, hunk_index)?;
+    let mut result = String::new();
+    let mut in_hunk = false;
+    let mut line_index = 0_u32;
+    let mut selected_changes = 0_u32;
+    for line in hunk_patch.split_inclusive('\n') {
+        if line.starts_with("@@") {
+            in_hunk = true;
+            result.push_str(line);
+            continue;
+        }
+        if !in_hunk {
+            result.push_str(line);
+            continue;
+        }
+        let selected = selected_lines.contains(&line_index);
+        if line.starts_with('+') {
+            if selected {
+                result.push_str(line);
+                selected_changes += 1;
+            } else if reverse {
+                result.push(' ');
+                result.push_str(line.strip_prefix('+').unwrap_or(line));
+            }
+        } else if let Some(content) = line.strip_prefix('-') {
+            if selected {
+                result.push_str(line);
+                selected_changes += 1;
+            } else if !reverse {
+                result.push(' ');
+                result.push_str(content);
+            }
+        } else {
+            result.push_str(line);
+        }
+        line_index += 1;
+    }
+    if selected_changes == 0 {
+        return Err("The selected lines do not contain a change.".to_owned());
+    }
+    Ok(result)
+}
+
+fn nul_pathspec(paths: &[String]) -> Result<Vec<u8>, String> {
+    if paths.is_empty() {
+        return Err("Select at least one file.".to_owned());
+    }
+    let mut input = Vec::new();
+    for path in paths {
+        if path.is_empty() || path.as_bytes().contains(&0) {
+            return Err("A selected path is invalid.".to_owned());
+        }
+        input.extend_from_slice(path.as_bytes());
+        input.push(0);
+    }
+    Ok(input)
+}
+
+fn validate_identity(name: &str, email: &str) -> Result<(), String> {
+    let invalid = |value: &str| {
+        value.trim().is_empty()
+            || value.contains(['\r', '\n'])
+            || value.contains('<')
+            || value.contains('>')
+    };
+    if invalid(name) || invalid(email) || !email.contains('@') {
+        return Err("The commit author name or email is invalid.".to_owned());
+    }
+    Ok(())
+}
+
 fn find_commit<'repo>(repo: &'repo Repository, oid: &str) -> Result<git2::Commit<'repo>, String> {
     let oid = Oid::from_str(oid).map_err(format_git_error)?;
     repo.find_commit(oid).map_err(format_git_error)
@@ -1603,13 +3046,22 @@ fn ensure_no_operation_in_progress(repo: &Repository) -> Result<(), String> {
 }
 
 fn ensure_clean_tracked(repo: &Repository) -> Result<(), String> {
-    let dirty = collect_status(repo)?.into_iter().any(|file| {
-        !file.untracked
-            && (file.conflicted
-                || file.staged != ChangeKind::None
-                || file.unstaged != ChangeKind::None)
-    });
-    if dirty {
+    let workdir = repo
+        .workdir()
+        .ok_or_else(|| "A working tree is required.".to_owned())?;
+    let output = run_git_capture(
+        &display_path(workdir),
+        vec![
+            "status".to_owned(),
+            "--porcelain=v1".to_owned(),
+            "--untracked-files=no".to_owned(),
+        ],
+        &[],
+    )?;
+    if !output.status.success() {
+        return Err(redact(&String::from_utf8_lossy(&output.stderr)));
+    }
+    if !output.stdout.is_empty() {
         Err("Commit or stash tracked changes before starting this operation.".to_owned())
     } else {
         Ok(())
@@ -1789,6 +3241,122 @@ fn validate_ref_name(name: &str) -> Result<(), String> {
         return Err("Invalid branch or revision name.".to_owned());
     }
     Ok(())
+}
+
+fn validate_branch_name(name: &str) -> Result<(), String> {
+    validate_ref_name(name)?;
+    let mut command = Command::new("git");
+    hide_console_window(&mut command);
+    let output = command
+        .args(["check-ref-format", "--branch", name])
+        .output()
+        .map_err(|error| format!("Git could not be started: {error}"))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err("Invalid branch name.".to_owned())
+    }
+}
+
+fn validate_remote_name(name: &str) -> Result<(), String> {
+    static REMOTE_NAME: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r"^[A-Za-z0-9][A-Za-z0-9._-]*$").expect("valid remote name regex"));
+    if REMOTE_NAME.is_match(name) && !name.ends_with('.') && !name.ends_with(".lock") {
+        Ok(())
+    } else {
+        Err("Invalid remote name.".to_owned())
+    }
+}
+
+fn validate_optional_url(value: Option<&str>) -> Result<(), String> {
+    if let Some(value) = value
+        && (value.trim().is_empty() || value.contains(['\0', '\r', '\n']) || value.starts_with('-'))
+    {
+        return Err("Invalid repository URL or path.".to_owned());
+    }
+    Ok(())
+}
+
+fn validate_config_key(key: &str) -> Result<(), String> {
+    static CONFIG_KEY: Lazy<Regex> = Lazy::new(|| {
+        Regex::new(r"^[A-Za-z][A-Za-z0-9-]*(\.[A-Za-z0-9][A-Za-z0-9._-]*)+$")
+            .expect("valid config key regex")
+    });
+    if CONFIG_KEY.is_match(key) && !key.contains("..") {
+        Ok(())
+    } else {
+        Err("Invalid Git config key.".to_owned())
+    }
+}
+
+fn validate_config_value(value: &str) -> Result<(), String> {
+    if value.contains('\0') {
+        Err("Git config values cannot contain NUL bytes.".to_owned())
+    } else {
+        Ok(())
+    }
+}
+
+fn config_scope(value: &str) -> GitConfigScope {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "system" => GitConfigScope::System,
+        "global" => GitConfigScope::Global,
+        "local" => GitConfigScope::Local,
+        "worktree" => GitConfigScope::Worktree,
+        "command" => GitConfigScope::Command,
+        _ => GitConfigScope::Unknown,
+    }
+}
+
+fn display_config_origin(value: &str) -> String {
+    redact(value.trim().strip_prefix("file:").unwrap_or(value.trim()))
+}
+
+fn is_sensitive_config_key(key: &str) -> bool {
+    let key = key.to_ascii_lowercase();
+    key.ends_with(".extraheader")
+        || key.contains("password")
+        || key.contains("accesstoken")
+        || key.contains("access-token")
+        || key.contains("oauth")
+}
+
+fn normalize_sparse_directories(directories: Vec<String>) -> Result<Vec<String>, String> {
+    let mut unique = HashSet::new();
+    let mut result = Vec::new();
+    for directory in directories {
+        let normalized = directory.trim().replace('\\', "/");
+        let path = Path::new(&normalized);
+        if normalized.is_empty()
+            || path.is_absolute()
+            || path
+                .components()
+                .any(|part| !matches!(part, Component::Normal(_)))
+        {
+            return Err(format!("Invalid sparse checkout directory: {directory}"));
+        }
+        if unique.insert(normalized.to_lowercase()) {
+            result.push(normalized);
+        }
+    }
+    Ok(result)
+}
+
+fn gitignore_contents(template: &GitignoreTemplate) -> Option<&'static str> {
+    match template {
+        GitignoreTemplate::None => None,
+        GitignoreTemplate::Flutter => Some(
+            ".dart_tool/\n.flutter-plugins\n.flutter-plugins-dependencies\n.packages\n.pub-cache/\nbuild/\n*.iml\n.idea/\n",
+        ),
+        GitignoreTemplate::Rust => Some("/target/\n**/*.rs.bk\n*.pdb\n"),
+        GitignoreTemplate::Node => {
+            Some("node_modules/\nnpm-debug.log*\nyarn-debug.log*\n.env\ndist/\n")
+        }
+        GitignoreTemplate::Python => {
+            Some("__pycache__/\n*.py[cod]\n.venv/\nvenv/\n.pytest_cache/\n.env\n")
+        }
+        GitignoreTemplate::VisualStudio => Some(".vs/\n[Bb]in/\n[Oo]bj/\n*.user\n*.suo\n*.pdb\n"),
+    }
 }
 
 fn validate_rebase_plan(plan: &RebasePlan) -> Result<(), String> {
@@ -2003,7 +3571,10 @@ fn display_path(path: impl AsRef<Path>) -> String {
 }
 
 fn redact(value: &str) -> String {
-    CREDENTIAL_URL.replace_all(value, "$1***:***@").into_owned()
+    let value = CREDENTIAL_URL.replace_all(value, "$1***:***@");
+    CREDENTIAL_USER_URL
+        .replace_all(&value, "$1***@")
+        .into_owned()
 }
 
 fn format_git_error(error: git2::Error) -> String {
@@ -2024,6 +3595,10 @@ mod tests {
         assert_eq!(
             redact("fatal: https://alice:secret@example.com/repo"),
             "fatal: https://***:***@example.com/repo"
+        );
+        assert_eq!(
+            redact("https://secret-token@example.com/repo"),
+            "https://***@example.com/repo"
         );
     }
 
@@ -2051,5 +3626,41 @@ mod tests {
     fn rejects_parent_paths() {
         assert!(safe_relative_path("../outside").is_err());
         assert!(safe_relative_path("src/main.rs").is_ok());
+    }
+
+    #[test]
+    fn validates_setup_inputs() {
+        assert!(validate_remote_name("origin").is_ok());
+        assert!(validate_remote_name("upstream-2").is_ok());
+        assert!(validate_remote_name("bad/name").is_err());
+        assert!(validate_config_key("user.name").is_ok());
+        assert!(validate_config_key("remote.origin.url").is_ok());
+        assert!(validate_config_key("invalid").is_err());
+        assert!(normalize_sparse_directories(vec!["src/core".to_owned()]).is_ok());
+        assert!(normalize_sparse_directories(vec!["../outside".to_owned()]).is_err());
+        assert!(normalize_sparse_directories(vec!["C:\\outside".to_owned()]).is_err());
+    }
+
+    #[test]
+    fn masks_sensitive_config_keys() {
+        assert!(is_sensitive_config_key("http.example.extraHeader"));
+        assert!(is_sensitive_config_key("service.accessToken"));
+        assert!(!is_sensitive_config_key("credential.helper"));
+        assert!(!is_sensitive_config_key("user.email"));
+    }
+
+    #[test]
+    fn bundled_gitignore_templates_are_offline() {
+        assert!(gitignore_contents(&GitignoreTemplate::None).is_none());
+        assert!(
+            gitignore_contents(&GitignoreTemplate::Flutter)
+                .unwrap()
+                .contains(".dart_tool/")
+        );
+        assert!(
+            gitignore_contents(&GitignoreTemplate::Rust)
+                .unwrap()
+                .contains("/target/")
+        );
     }
 }

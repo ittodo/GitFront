@@ -69,7 +69,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => -24242442;
+  int get rustContentHash => 1280726260;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -81,6 +81,19 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 }
 
 abstract class RustLibApi extends BaseApi {
+  Future<OperationResult> crateApiGitAddGitConfigValue({
+    String? path,
+    required GitConfigScope scope,
+    required String key,
+    required String value,
+  });
+
+  Future<OperationResult> crateApiGitAddRemote({
+    required String path,
+    required String name,
+    required String fetchUrl,
+  });
+
   Future<OperationResult> crateApiGitApplyHunk({
     required String path,
     required String filePath,
@@ -90,7 +103,23 @@ abstract class RustLibApi extends BaseApi {
     required bool reverse,
   });
 
+  Future<OperationResult> crateApiGitApplyHunkLines({
+    required String path,
+    required String filePath,
+    required bool staged,
+    required int hunkIndex,
+    required List<int> lineIndices,
+    required String expectedFingerprint,
+    required bool reverse,
+  });
+
   Future<void> crateApiUpdateApplyUpdateAndRestart();
+
+  Future<CherryPickApplicability> crateApiGitAssessCherryPick({
+    required String path,
+    required String oid,
+    int? mainlineParent,
+  });
 
   Future<UpdateStatus> crateApiUpdateCheckForUpdate();
 
@@ -108,6 +137,10 @@ abstract class RustLibApi extends BaseApi {
   Future<OperationResult> crateApiGitCloneRepository({
     required String url,
     required String target,
+  });
+
+  Future<CloneResult> crateApiGitCloneRepositoryAdvanced({
+    required CloneOptions options,
   });
 
   Future<DiffDocument> crateApiGitCompareCommits({
@@ -148,6 +181,11 @@ abstract class RustLibApi extends BaseApi {
     required String message,
   });
 
+  Future<OperationResult> crateApiGitCreateCommitWithOptions({
+    required String path,
+    required CommitOptions options,
+  });
+
   Future<OperationResult> crateApiGitCreateTag({
     required String path,
     required String targetOid,
@@ -156,10 +194,20 @@ abstract class RustLibApi extends BaseApi {
     String? message,
   });
 
+  Future<OperationResult> crateApiGitCreateTrackingBranch({
+    required String path,
+    required String remoteBranch,
+    required String localBranch,
+  });
+
   Future<OperationResult> crateApiGitDeleteLocalBranch({
     required String path,
     required String name,
     required bool force,
+  });
+
+  Future<OperationResult> crateApiGitDisableSparseCheckout({
+    required String path,
   });
 
   Future<OperationResult> crateApiGitDiscardFile({
@@ -171,6 +219,11 @@ abstract class RustLibApi extends BaseApi {
   Future<UpdateStatus> crateApiUpdateDownloadUpdate();
 
   Future<OperationResult> crateApiGitFetchAll({required String path});
+
+  Future<FileChange?> crateApiGitGetCachedFileChange({
+    required String path,
+    required String filePath,
+  });
 
   Future<CommitDetail> crateApiGitGetCommitDetail({
     required String path,
@@ -188,17 +241,52 @@ abstract class RustLibApi extends BaseApi {
     required bool staged,
   });
 
+  Future<GitCapabilities> crateApiGitGitCapabilities();
+
   Future<String> crateApiGitGitVersion();
 
   String crateApiSimpleGreet({required String name});
 
   Future<void> crateApiSimpleInitApp();
 
+  Future<RepositoryInitResult> crateApiGitInitializeRepository({
+    required RepositoryInitOptions options,
+  });
+
+  Future<OperationResult> crateApiGitIntentToAdd({
+    required String path,
+    required List<String> paths,
+  });
+
+  Future<BranchPage> crateApiGitListBranchesCursor({
+    required String path,
+    required String cursor,
+    required int limit,
+  });
+
+  Future<FileChangePage> crateApiGitListChangesCursor({
+    required String path,
+    required String cursor,
+    required int limit,
+  });
+
   Future<CommitPage> crateApiGitListCommits({
     required String path,
     required int offset,
     required int limit,
   });
+
+  Future<CommitCursorPage> crateApiGitListCommitsCursor({
+    required String path,
+    String? cursor,
+    required int limit,
+  });
+
+  Future<List<RemoteDetails>> crateApiGitListRemoteDetails({
+    required String path,
+  });
+
+  Future<CommitDefaults> crateApiGitLoadCommitDefaults({required String path});
 
   Future<ConflictFile> crateApiGitLoadConflict({
     required String path,
@@ -224,6 +312,11 @@ abstract class RustLibApi extends BaseApi {
 
   Future<RepositorySnapshot> crateApiGitOpenRepository({required String path});
 
+  Future<RepositorySnapshotPage> crateApiGitOpenRepositoryPaged({
+    required String path,
+    required int changeLimit,
+  });
+
   Future<RebasePlan> crateApiGitPrepareInteractiveRebase({
     required String path,
     required String upstream,
@@ -245,6 +338,19 @@ abstract class RustLibApi extends BaseApi {
     required bool setUpstream,
   });
 
+  Future<OperationResult> crateApiGitPushCurrentTo({
+    required String path,
+    required String remote,
+    required String remoteBranch,
+    required bool forceWithLease,
+  });
+
+  Future<GitConfigSnapshot> crateApiGitReadGitConfig({String? path});
+
+  Future<SparseCheckoutState> crateApiGitReadSparseCheckout({
+    required String path,
+  });
+
   Future<OperationResult> crateApiGitRebaseBranch({
     required String path,
     required String upstream,
@@ -255,11 +361,32 @@ abstract class RustLibApi extends BaseApi {
     required String path,
   });
 
+  Future<RepositorySnapshotPage> crateApiGitRefreshRepositoryPaged({
+    required String path,
+    required int changeLimit,
+  });
+
   Future<WorkingTreeSnapshot> crateApiGitRefreshWorkingTree({
     required String path,
   });
 
+  Future<WorkingTreeSnapshotPage> crateApiGitRefreshWorkingTreePaged({
+    required String path,
+    required int changeLimit,
+  });
+
+  Future<OperationResult> crateApiGitRemoveRemote({
+    required String path,
+    required String name,
+  });
+
   Future<OperationResult> crateApiGitRenameBranch({
+    required String path,
+    required String oldName,
+    required String newName,
+  });
+
+  Future<OperationResult> crateApiGitRenameRemote({
     required String path,
     required String oldName,
     required String newName,
@@ -283,6 +410,18 @@ abstract class RustLibApi extends BaseApi {
     required String path,
     required String filePath,
     required String content,
+  });
+
+  Future<OperationResult> crateApiGitSetGitConfig({
+    String? path,
+    required GitConfigScope scope,
+    required String key,
+    required String value,
+  });
+
+  Future<OperationResult> crateApiGitSetSparseCheckout({
+    required String path,
+    required List<String> directories,
   });
 
   Future<OperationResult> crateApiGitStagePaths({
@@ -317,9 +456,23 @@ abstract class RustLibApi extends BaseApi {
     required String name,
   });
 
+  Future<OperationResult> crateApiGitUnsetGitConfigValue({
+    String? path,
+    required GitConfigScope scope,
+    required String key,
+    String? value,
+  });
+
   Future<OperationResult> crateApiGitUnstagePaths({
     required String path,
     required List<String> paths,
+  });
+
+  Future<OperationResult> crateApiGitUpdateRemote({
+    required String path,
+    required String name,
+    required String fetchUrl,
+    String? pushUrl,
   });
 
   Stream<RepositoryWatchEvent> crateApiGitWatchRepository({
@@ -334,6 +487,81 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     required super.generalizedFrbRustBinding,
     required super.portManager,
   });
+
+  @override
+  Future<OperationResult> crateApiGitAddGitConfigValue({
+    String? path,
+    required GitConfigScope scope,
+    required String key,
+    required String value,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_opt_String(path, serializer);
+          sse_encode_git_config_scope(scope, serializer);
+          sse_encode_String(key, serializer);
+          sse_encode_String(value, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 1,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_operation_result,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiGitAddGitConfigValueConstMeta,
+        argValues: [path, scope, key, value],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGitAddGitConfigValueConstMeta =>
+      const TaskConstMeta(
+        debugName: "add_git_config_value",
+        argNames: ["path", "scope", "key", "value"],
+      );
+
+  @override
+  Future<OperationResult> crateApiGitAddRemote({
+    required String path,
+    required String name,
+    required String fetchUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(path, serializer);
+          sse_encode_String(name, serializer);
+          sse_encode_String(fetchUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 2,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_operation_result,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiGitAddRemoteConstMeta,
+        argValues: [path, name, fetchUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGitAddRemoteConstMeta => const TaskConstMeta(
+    debugName: "add_remote",
+    argNames: ["path", "name", "fetchUrl"],
+  );
 
   @override
   Future<OperationResult> crateApiGitApplyHunk({
@@ -357,7 +585,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 1,
+            funcId: 3,
             port: port_,
           );
         },
@@ -392,6 +620,66 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   );
 
   @override
+  Future<OperationResult> crateApiGitApplyHunkLines({
+    required String path,
+    required String filePath,
+    required bool staged,
+    required int hunkIndex,
+    required List<int> lineIndices,
+    required String expectedFingerprint,
+    required bool reverse,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(path, serializer);
+          sse_encode_String(filePath, serializer);
+          sse_encode_bool(staged, serializer);
+          sse_encode_u_32(hunkIndex, serializer);
+          sse_encode_list_prim_u_32_loose(lineIndices, serializer);
+          sse_encode_String(expectedFingerprint, serializer);
+          sse_encode_bool(reverse, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 4,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_operation_result,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiGitApplyHunkLinesConstMeta,
+        argValues: [
+          path,
+          filePath,
+          staged,
+          hunkIndex,
+          lineIndices,
+          expectedFingerprint,
+          reverse,
+        ],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGitApplyHunkLinesConstMeta => const TaskConstMeta(
+    debugName: "apply_hunk_lines",
+    argNames: [
+      "path",
+      "filePath",
+      "staged",
+      "hunkIndex",
+      "lineIndices",
+      "expectedFingerprint",
+      "reverse",
+    ],
+  );
+
+  @override
   Future<void> crateApiUpdateApplyUpdateAndRestart() {
     return handler.executeNormal(
       NormalTask(
@@ -400,7 +688,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 2,
+            funcId: 5,
             port: port_,
           );
         },
@@ -419,6 +707,43 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "apply_update_and_restart", argNames: []);
 
   @override
+  Future<CherryPickApplicability> crateApiGitAssessCherryPick({
+    required String path,
+    required String oid,
+    int? mainlineParent,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(path, serializer);
+          sse_encode_String(oid, serializer);
+          sse_encode_opt_box_autoadd_u_32(mainlineParent, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 6,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_cherry_pick_applicability,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiGitAssessCherryPickConstMeta,
+        argValues: [path, oid, mainlineParent],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGitAssessCherryPickConstMeta =>
+      const TaskConstMeta(
+        debugName: "assess_cherry_pick",
+        argNames: ["path", "oid", "mainlineParent"],
+      );
+
+  @override
   Future<UpdateStatus> crateApiUpdateCheckForUpdate() {
     return handler.executeNormal(
       NormalTask(
@@ -427,7 +752,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 3,
+            funcId: 7,
             port: port_,
           );
         },
@@ -459,7 +784,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 4,
+            funcId: 8,
             port: port_,
           );
         },
@@ -495,7 +820,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 5,
+            funcId: 9,
             port: port_,
           );
         },
@@ -530,7 +855,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 6,
+            funcId: 10,
             port: port_,
           );
         },
@@ -551,6 +876,39 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   );
 
   @override
+  Future<CloneResult> crateApiGitCloneRepositoryAdvanced({
+    required CloneOptions options,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_box_autoadd_clone_options(options, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 11,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_clone_result,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiGitCloneRepositoryAdvancedConstMeta,
+        argValues: [options],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGitCloneRepositoryAdvancedConstMeta =>
+      const TaskConstMeta(
+        debugName: "clone_repository_advanced",
+        argNames: ["options"],
+      );
+
+  @override
   Future<DiffDocument> crateApiGitCompareCommits({
     required String path,
     required String fromOid,
@@ -566,7 +924,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 7,
+            funcId: 12,
             port: port_,
           );
         },
@@ -600,7 +958,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 8,
+            funcId: 13,
             port: port_,
           );
         },
@@ -635,7 +993,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 9,
+            funcId: 14,
             port: port_,
           );
         },
@@ -669,7 +1027,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 10,
+            funcId: 15,
             port: port_,
           );
         },
@@ -703,7 +1061,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 11,
+            funcId: 16,
             port: port_,
           );
         },
@@ -741,7 +1099,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 12,
+            funcId: 17,
             port: port_,
           );
         },
@@ -775,7 +1133,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 13,
+            funcId: 18,
             port: port_,
           );
         },
@@ -794,6 +1152,41 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     debugName: "create_commit",
     argNames: ["path", "message"],
   );
+
+  @override
+  Future<OperationResult> crateApiGitCreateCommitWithOptions({
+    required String path,
+    required CommitOptions options,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(path, serializer);
+          sse_encode_box_autoadd_commit_options(options, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 19,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_operation_result,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiGitCreateCommitWithOptionsConstMeta,
+        argValues: [path, options],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGitCreateCommitWithOptionsConstMeta =>
+      const TaskConstMeta(
+        debugName: "create_commit_with_options",
+        argNames: ["path", "options"],
+      );
 
   @override
   Future<OperationResult> crateApiGitCreateTag({
@@ -815,7 +1208,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 14,
+            funcId: 20,
             port: port_,
           );
         },
@@ -836,6 +1229,43 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   );
 
   @override
+  Future<OperationResult> crateApiGitCreateTrackingBranch({
+    required String path,
+    required String remoteBranch,
+    required String localBranch,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(path, serializer);
+          sse_encode_String(remoteBranch, serializer);
+          sse_encode_String(localBranch, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 21,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_operation_result,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiGitCreateTrackingBranchConstMeta,
+        argValues: [path, remoteBranch, localBranch],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGitCreateTrackingBranchConstMeta =>
+      const TaskConstMeta(
+        debugName: "create_tracking_branch",
+        argNames: ["path", "remoteBranch", "localBranch"],
+      );
+
+  @override
   Future<OperationResult> crateApiGitDeleteLocalBranch({
     required String path,
     required String name,
@@ -851,7 +1281,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 15,
+            funcId: 22,
             port: port_,
           );
         },
@@ -873,6 +1303,39 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<OperationResult> crateApiGitDisableSparseCheckout({
+    required String path,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(path, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 23,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_operation_result,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiGitDisableSparseCheckoutConstMeta,
+        argValues: [path],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGitDisableSparseCheckoutConstMeta =>
+      const TaskConstMeta(
+        debugName: "disable_sparse_checkout",
+        argNames: ["path"],
+      );
+
+  @override
   Future<OperationResult> crateApiGitDiscardFile({
     required String path,
     required String filePath,
@@ -888,7 +1351,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 16,
+            funcId: 24,
             port: port_,
           );
         },
@@ -917,7 +1380,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 17,
+            funcId: 25,
             port: port_,
           );
         },
@@ -945,7 +1408,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 18,
+            funcId: 26,
             port: port_,
           );
         },
@@ -964,6 +1427,41 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "fetch_all", argNames: ["path"]);
 
   @override
+  Future<FileChange?> crateApiGitGetCachedFileChange({
+    required String path,
+    required String filePath,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(path, serializer);
+          sse_encode_String(filePath, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 27,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_box_autoadd_file_change,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiGitGetCachedFileChangeConstMeta,
+        argValues: [path, filePath],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGitGetCachedFileChangeConstMeta =>
+      const TaskConstMeta(
+        debugName: "get_cached_file_change",
+        argNames: ["path", "filePath"],
+      );
+
+  @override
   Future<CommitDetail> crateApiGitGetCommitDetail({
     required String path,
     required String oid,
@@ -977,7 +1475,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 19,
+            funcId: 28,
             port: port_,
           );
         },
@@ -1011,7 +1509,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 20,
+            funcId: 29,
             port: port_,
           );
         },
@@ -1047,7 +1545,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 21,
+            funcId: 30,
             port: port_,
           );
         },
@@ -1068,6 +1566,33 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   );
 
   @override
+  Future<GitCapabilities> crateApiGitGitCapabilities() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 31,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_git_capabilities,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiGitGitCapabilitiesConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGitGitCapabilitiesConstMeta =>
+      const TaskConstMeta(debugName: "git_capabilities", argNames: []);
+
+  @override
   Future<String> crateApiGitGitVersion() {
     return handler.executeNormal(
       NormalTask(
@@ -1076,7 +1601,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 22,
+            funcId: 32,
             port: port_,
           );
         },
@@ -1101,7 +1626,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(name, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 23)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 33)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -1126,7 +1651,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 24,
+            funcId: 34,
             port: port_,
           );
         },
@@ -1145,6 +1670,147 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "init_app", argNames: []);
 
   @override
+  Future<RepositoryInitResult> crateApiGitInitializeRepository({
+    required RepositoryInitOptions options,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_box_autoadd_repository_init_options(options, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 35,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_repository_init_result,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiGitInitializeRepositoryConstMeta,
+        argValues: [options],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGitInitializeRepositoryConstMeta =>
+      const TaskConstMeta(
+        debugName: "initialize_repository",
+        argNames: ["options"],
+      );
+
+  @override
+  Future<OperationResult> crateApiGitIntentToAdd({
+    required String path,
+    required List<String> paths,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(path, serializer);
+          sse_encode_list_String(paths, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 36,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_operation_result,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiGitIntentToAddConstMeta,
+        argValues: [path, paths],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGitIntentToAddConstMeta => const TaskConstMeta(
+    debugName: "intent_to_add",
+    argNames: ["path", "paths"],
+  );
+
+  @override
+  Future<BranchPage> crateApiGitListBranchesCursor({
+    required String path,
+    required String cursor,
+    required int limit,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(path, serializer);
+          sse_encode_String(cursor, serializer);
+          sse_encode_u_32(limit, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 37,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_branch_page,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiGitListBranchesCursorConstMeta,
+        argValues: [path, cursor, limit],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGitListBranchesCursorConstMeta =>
+      const TaskConstMeta(
+        debugName: "list_branches_cursor",
+        argNames: ["path", "cursor", "limit"],
+      );
+
+  @override
+  Future<FileChangePage> crateApiGitListChangesCursor({
+    required String path,
+    required String cursor,
+    required int limit,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(path, serializer);
+          sse_encode_String(cursor, serializer);
+          sse_encode_u_32(limit, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 38,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_file_change_page,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiGitListChangesCursorConstMeta,
+        argValues: [path, cursor, limit],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGitListChangesCursorConstMeta =>
+      const TaskConstMeta(
+        debugName: "list_changes_cursor",
+        argNames: ["path", "cursor", "limit"],
+      );
+
+  @override
   Future<CommitPage> crateApiGitListCommits({
     required String path,
     required int offset,
@@ -1160,7 +1826,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 25,
+            funcId: 39,
             port: port_,
           );
         },
@@ -1181,6 +1847,104 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   );
 
   @override
+  Future<CommitCursorPage> crateApiGitListCommitsCursor({
+    required String path,
+    String? cursor,
+    required int limit,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(path, serializer);
+          sse_encode_opt_String(cursor, serializer);
+          sse_encode_u_32(limit, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 40,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_commit_cursor_page,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiGitListCommitsCursorConstMeta,
+        argValues: [path, cursor, limit],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGitListCommitsCursorConstMeta =>
+      const TaskConstMeta(
+        debugName: "list_commits_cursor",
+        argNames: ["path", "cursor", "limit"],
+      );
+
+  @override
+  Future<List<RemoteDetails>> crateApiGitListRemoteDetails({
+    required String path,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(path, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 41,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_remote_details,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiGitListRemoteDetailsConstMeta,
+        argValues: [path],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGitListRemoteDetailsConstMeta =>
+      const TaskConstMeta(debugName: "list_remote_details", argNames: ["path"]);
+
+  @override
+  Future<CommitDefaults> crateApiGitLoadCommitDefaults({required String path}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(path, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 42,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_commit_defaults,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiGitLoadCommitDefaultsConstMeta,
+        argValues: [path],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGitLoadCommitDefaultsConstMeta =>
+      const TaskConstMeta(
+        debugName: "load_commit_defaults",
+        argNames: ["path"],
+      );
+
+  @override
   Future<ConflictFile> crateApiGitLoadConflict({
     required String path,
     required String filePath,
@@ -1194,7 +1958,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 26,
+            funcId: 43,
             port: port_,
           );
         },
@@ -1228,7 +1992,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 27,
+            funcId: 44,
             port: port_,
           );
         },
@@ -1266,7 +2030,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 28,
+            funcId: 45,
             port: port_,
           );
         },
@@ -1301,7 +2065,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 29,
+            funcId: 46,
             port: port_,
           );
         },
@@ -1331,7 +2095,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 30,
+            funcId: 47,
             port: port_,
           );
         },
@@ -1350,6 +2114,41 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "open_repository", argNames: ["path"]);
 
   @override
+  Future<RepositorySnapshotPage> crateApiGitOpenRepositoryPaged({
+    required String path,
+    required int changeLimit,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(path, serializer);
+          sse_encode_u_32(changeLimit, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 48,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_repository_snapshot_page,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiGitOpenRepositoryPagedConstMeta,
+        argValues: [path, changeLimit],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGitOpenRepositoryPagedConstMeta =>
+      const TaskConstMeta(
+        debugName: "open_repository_paged",
+        argNames: ["path", "changeLimit"],
+      );
+
+  @override
   Future<RebasePlan> crateApiGitPrepareInteractiveRebase({
     required String path,
     required String upstream,
@@ -1363,7 +2162,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 31,
+            funcId: 49,
             port: port_,
           );
         },
@@ -1398,7 +2197,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 32,
+            funcId: 50,
             port: port_,
           );
         },
@@ -1432,7 +2231,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 33,
+            funcId: 51,
             port: port_,
           );
         },
@@ -1466,7 +2265,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 34,
+            funcId: 52,
             port: port_,
           );
         },
@@ -1487,6 +2286,105 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   );
 
   @override
+  Future<OperationResult> crateApiGitPushCurrentTo({
+    required String path,
+    required String remote,
+    required String remoteBranch,
+    required bool forceWithLease,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(path, serializer);
+          sse_encode_String(remote, serializer);
+          sse_encode_String(remoteBranch, serializer);
+          sse_encode_bool(forceWithLease, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 53,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_operation_result,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiGitPushCurrentToConstMeta,
+        argValues: [path, remote, remoteBranch, forceWithLease],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGitPushCurrentToConstMeta => const TaskConstMeta(
+    debugName: "push_current_to",
+    argNames: ["path", "remote", "remoteBranch", "forceWithLease"],
+  );
+
+  @override
+  Future<GitConfigSnapshot> crateApiGitReadGitConfig({String? path}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_opt_String(path, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 54,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_git_config_snapshot,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiGitReadGitConfigConstMeta,
+        argValues: [path],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGitReadGitConfigConstMeta =>
+      const TaskConstMeta(debugName: "read_git_config", argNames: ["path"]);
+
+  @override
+  Future<SparseCheckoutState> crateApiGitReadSparseCheckout({
+    required String path,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(path, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 55,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_sparse_checkout_state,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiGitReadSparseCheckoutConstMeta,
+        argValues: [path],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGitReadSparseCheckoutConstMeta =>
+      const TaskConstMeta(
+        debugName: "read_sparse_checkout",
+        argNames: ["path"],
+      );
+
+  @override
   Future<OperationResult> crateApiGitRebaseBranch({
     required String path,
     required String upstream,
@@ -1502,7 +2400,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 35,
+            funcId: 56,
             port: port_,
           );
         },
@@ -1534,7 +2432,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 36,
+            funcId: 57,
             port: port_,
           );
         },
@@ -1553,6 +2451,41 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "refresh_repository", argNames: ["path"]);
 
   @override
+  Future<RepositorySnapshotPage> crateApiGitRefreshRepositoryPaged({
+    required String path,
+    required int changeLimit,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(path, serializer);
+          sse_encode_u_32(changeLimit, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 58,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_repository_snapshot_page,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiGitRefreshRepositoryPagedConstMeta,
+        argValues: [path, changeLimit],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGitRefreshRepositoryPagedConstMeta =>
+      const TaskConstMeta(
+        debugName: "refresh_repository_paged",
+        argNames: ["path", "changeLimit"],
+      );
+
+  @override
   Future<WorkingTreeSnapshot> crateApiGitRefreshWorkingTree({
     required String path,
   }) {
@@ -1564,7 +2497,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 37,
+            funcId: 59,
             port: port_,
           );
         },
@@ -1586,6 +2519,75 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<WorkingTreeSnapshotPage> crateApiGitRefreshWorkingTreePaged({
+    required String path,
+    required int changeLimit,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(path, serializer);
+          sse_encode_u_32(changeLimit, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 60,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_working_tree_snapshot_page,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiGitRefreshWorkingTreePagedConstMeta,
+        argValues: [path, changeLimit],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGitRefreshWorkingTreePagedConstMeta =>
+      const TaskConstMeta(
+        debugName: "refresh_working_tree_paged",
+        argNames: ["path", "changeLimit"],
+      );
+
+  @override
+  Future<OperationResult> crateApiGitRemoveRemote({
+    required String path,
+    required String name,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(path, serializer);
+          sse_encode_String(name, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 61,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_operation_result,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiGitRemoveRemoteConstMeta,
+        argValues: [path, name],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGitRemoveRemoteConstMeta => const TaskConstMeta(
+    debugName: "remove_remote",
+    argNames: ["path", "name"],
+  );
+
+  @override
   Future<OperationResult> crateApiGitRenameBranch({
     required String path,
     required String oldName,
@@ -1601,7 +2603,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 38,
+            funcId: 62,
             port: port_,
           );
         },
@@ -1618,6 +2620,42 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   TaskConstMeta get kCrateApiGitRenameBranchConstMeta => const TaskConstMeta(
     debugName: "rename_branch",
+    argNames: ["path", "oldName", "newName"],
+  );
+
+  @override
+  Future<OperationResult> crateApiGitRenameRemote({
+    required String path,
+    required String oldName,
+    required String newName,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(path, serializer);
+          sse_encode_String(oldName, serializer);
+          sse_encode_String(newName, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 63,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_operation_result,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiGitRenameRemoteConstMeta,
+        argValues: [path, oldName, newName],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGitRenameRemoteConstMeta => const TaskConstMeta(
+    debugName: "rename_remote",
     argNames: ["path", "oldName", "newName"],
   );
 
@@ -1641,7 +2679,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 39,
+            funcId: 64,
             port: port_,
           );
         },
@@ -1689,7 +2727,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 40,
+            funcId: 65,
             port: port_,
           );
         },
@@ -1725,7 +2763,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 41,
+            funcId: 66,
             port: port_,
           );
         },
@@ -1747,6 +2785,79 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<OperationResult> crateApiGitSetGitConfig({
+    String? path,
+    required GitConfigScope scope,
+    required String key,
+    required String value,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_opt_String(path, serializer);
+          sse_encode_git_config_scope(scope, serializer);
+          sse_encode_String(key, serializer);
+          sse_encode_String(value, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 67,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_operation_result,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiGitSetGitConfigConstMeta,
+        argValues: [path, scope, key, value],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGitSetGitConfigConstMeta => const TaskConstMeta(
+    debugName: "set_git_config",
+    argNames: ["path", "scope", "key", "value"],
+  );
+
+  @override
+  Future<OperationResult> crateApiGitSetSparseCheckout({
+    required String path,
+    required List<String> directories,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(path, serializer);
+          sse_encode_list_String(directories, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 68,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_operation_result,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiGitSetSparseCheckoutConstMeta,
+        argValues: [path, directories],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGitSetSparseCheckoutConstMeta =>
+      const TaskConstMeta(
+        debugName: "set_sparse_checkout",
+        argNames: ["path", "directories"],
+      );
+
+  @override
   Future<OperationResult> crateApiGitStagePaths({
     required String path,
     required List<String> paths,
@@ -1760,7 +2871,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 42,
+            funcId: 69,
             port: port_,
           );
         },
@@ -1794,7 +2905,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 43,
+            funcId: 70,
             port: port_,
           );
         },
@@ -1831,7 +2942,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 44,
+            funcId: 71,
             port: port_,
           );
         },
@@ -1865,7 +2976,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 45,
+            funcId: 72,
             port: port_,
           );
         },
@@ -1899,7 +3010,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 46,
+            funcId: 73,
             port: port_,
           );
         },
@@ -1933,7 +3044,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 47,
+            funcId: 74,
             port: port_,
           );
         },
@@ -1954,6 +3065,45 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   );
 
   @override
+  Future<OperationResult> crateApiGitUnsetGitConfigValue({
+    String? path,
+    required GitConfigScope scope,
+    required String key,
+    String? value,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_opt_String(path, serializer);
+          sse_encode_git_config_scope(scope, serializer);
+          sse_encode_String(key, serializer);
+          sse_encode_opt_String(value, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 75,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_operation_result,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiGitUnsetGitConfigValueConstMeta,
+        argValues: [path, scope, key, value],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGitUnsetGitConfigValueConstMeta =>
+      const TaskConstMeta(
+        debugName: "unset_git_config_value",
+        argNames: ["path", "scope", "key", "value"],
+      );
+
+  @override
   Future<OperationResult> crateApiGitUnstagePaths({
     required String path,
     required List<String> paths,
@@ -1967,7 +3117,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 48,
+            funcId: 76,
             port: port_,
           );
         },
@@ -1988,6 +3138,44 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   );
 
   @override
+  Future<OperationResult> crateApiGitUpdateRemote({
+    required String path,
+    required String name,
+    required String fetchUrl,
+    String? pushUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(path, serializer);
+          sse_encode_String(name, serializer);
+          sse_encode_String(fetchUrl, serializer);
+          sse_encode_opt_String(pushUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 77,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_operation_result,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiGitUpdateRemoteConstMeta,
+        argValues: [path, name, fetchUrl, pushUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGitUpdateRemoteConstMeta => const TaskConstMeta(
+    debugName: "update_remote",
+    argNames: ["path", "name", "fetchUrl", "pushUrl"],
+  );
+
+  @override
   Stream<RepositoryWatchEvent> crateApiGitWatchRepository({
     required String path,
   }) {
@@ -2002,7 +3190,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 49,
+              funcId: 78,
               port: port_,
             );
           },
@@ -2050,9 +3238,35 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  CloneOptions dco_decode_box_autoadd_clone_options(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_clone_options(raw);
+  }
+
+  @protected
+  CommitOptions dco_decode_box_autoadd_commit_options(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_commit_options(raw);
+  }
+
+  @protected
+  FileChange dco_decode_box_autoadd_file_change(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_file_change(raw);
+  }
+
+  @protected
   RebasePlan dco_decode_box_autoadd_rebase_plan(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dco_decode_rebase_plan(raw);
+  }
+
+  @protected
+  RepositoryInitOptions dco_decode_box_autoadd_repository_init_options(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_repository_init_options(raw);
   }
 
   @protected
@@ -2086,9 +3300,89 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  BranchPage dco_decode_branch_page(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return BranchPage(
+      branches: dco_decode_list_branch_info(arr[0]),
+      nextCursor: dco_decode_opt_String(arr[1]),
+      totalBranches: dco_decode_u_32(arr[2]),
+    );
+  }
+
+  @protected
   ChangeKind dco_decode_change_kind(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return ChangeKind.values[raw as int];
+  }
+
+  @protected
+  CherryPickApplicability dco_decode_cherry_pick_applicability(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return CherryPickApplicability.values[raw as int];
+  }
+
+  @protected
+  CloneOptions dco_decode_clone_options(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 11)
+      throw Exception('unexpected arr length: expect 11 but see ${arr.length}');
+    return CloneOptions(
+      url: dco_decode_String(arr[0]),
+      target: dco_decode_String(arr[1]),
+      remoteName: dco_decode_String(arr[2]),
+      branch: dco_decode_opt_String(arr[3]),
+      depth: dco_decode_opt_box_autoadd_u_32(arr[4]),
+      singleBranch: dco_decode_bool(arr[5]),
+      noTags: dco_decode_bool(arr[6]),
+      recurseSubmodules: dco_decode_bool(arr[7]),
+      shallowSubmodules: dco_decode_bool(arr[8]),
+      blobless: dco_decode_bool(arr[9]),
+      sparseDirectories: dco_decode_list_String(arr[10]),
+    );
+  }
+
+  @protected
+  CloneResult dco_decode_clone_result(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return CloneResult(
+      path: dco_decode_String(arr[0]),
+      operation: dco_decode_operation_result(arr[1]),
+      warnings: dco_decode_list_String(arr[2]),
+    );
+  }
+
+  @protected
+  CommitCursorPage dco_decode_commit_cursor_page(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return CommitCursorPage(
+      commits: dco_decode_list_commit_summary(arr[0]),
+      nextCursor: dco_decode_opt_String(arr[1]),
+      totalCommits: dco_decode_u_32(arr[2]),
+    );
+  }
+
+  @protected
+  CommitDefaults dco_decode_commit_defaults(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    return CommitDefaults(
+      template: dco_decode_String(arr[0]),
+      cleanup: dco_decode_opt_String(arr[1]),
+      signingEnabled: dco_decode_bool(arr[2]),
+      previousMessage: dco_decode_opt_String(arr[3]),
+    );
   }
 
   @protected
@@ -2108,6 +3402,26 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       committedAt: dco_decode_i_64(arr[7]),
       parentOids: dco_decode_list_String(arr[8]),
       diff: dco_decode_diff_document(arr[9]),
+    );
+  }
+
+  @protected
+  CommitOptions dco_decode_commit_options(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 10)
+      throw Exception('unexpected arr length: expect 10 but see ${arr.length}');
+    return CommitOptions(
+      message: dco_decode_opt_String(arr[0]),
+      amend: dco_decode_bool(arr[1]),
+      signoff: dco_decode_bool(arr[2]),
+      signing: dco_decode_commit_signing_mode(arr[3]),
+      authorName: dco_decode_opt_String(arr[4]),
+      authorEmail: dco_decode_opt_String(arr[5]),
+      authoredAt: dco_decode_opt_String(arr[6]),
+      allowEmpty: dco_decode_bool(arr[7]),
+      fixupTarget: dco_decode_opt_String(arr[8]),
+      squashTarget: dco_decode_opt_String(arr[9]),
     );
   }
 
@@ -2140,6 +3454,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   CommitReferenceKind dco_decode_commit_reference_kind(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return CommitReferenceKind.values[raw as int];
+  }
+
+  @protected
+  CommitSigningMode dco_decode_commit_signing_mode(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return CommitSigningMode.values[raw as int];
   }
 
   @protected
@@ -2285,6 +3605,74 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  FileChangePage dco_decode_file_change_page(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 7)
+      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
+    return FileChangePage(
+      files: dco_decode_list_file_change(arr[0]),
+      nextCursor: dco_decode_opt_String(arr[1]),
+      totalFiles: dco_decode_u_32(arr[2]),
+      stagedCount: dco_decode_u_32(arr[3]),
+      unstagedCount: dco_decode_u_32(arr[4]),
+      conflictCount: dco_decode_u_32(arr[5]),
+      untrackedCount: dco_decode_u_32(arr[6]),
+    );
+  }
+
+  @protected
+  GitCapabilities dco_decode_git_capabilities(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    return GitCapabilities(
+      version: dco_decode_String(arr[0]),
+      supportsRepositorySetup: dco_decode_bool(arr[1]),
+      supportsFixedValueConfig: dco_decode_bool(arr[2]),
+      supportsSparseCheckout: dco_decode_bool(arr[3]),
+    );
+  }
+
+  @protected
+  GitConfigEntry dco_decode_git_config_entry(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 6)
+      throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
+    return GitConfigEntry(
+      key: dco_decode_String(arr[0]),
+      value: dco_decode_String(arr[1]),
+      scope: dco_decode_git_config_scope(arr[2]),
+      origin: dco_decode_String(arr[3]),
+      inherited: dco_decode_bool(arr[4]),
+      sensitive: dco_decode_bool(arr[5]),
+    );
+  }
+
+  @protected
+  GitConfigScope dco_decode_git_config_scope(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return GitConfigScope.values[raw as int];
+  }
+
+  @protected
+  GitConfigSnapshot dco_decode_git_config_snapshot(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 1)
+      throw Exception('unexpected arr length: expect 1 but see ${arr.length}');
+    return GitConfigSnapshot(entries: dco_decode_list_git_config_entry(arr[0]));
+  }
+
+  @protected
+  GitignoreTemplate dco_decode_gitignore_template(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return GitignoreTemplate.values[raw as int];
+  }
+
+  @protected
   GraphLane dco_decode_graph_lane(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
@@ -2363,6 +3751,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<GitConfigEntry> dco_decode_list_git_config_entry(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_git_config_entry).toList();
+  }
+
+  @protected
+  List<int> dco_decode_list_prim_u_32_loose(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as List<int>;
+  }
+
+  @protected
   Uint32List dco_decode_list_prim_u_32_strict(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as Uint32List;
@@ -2378,6 +3778,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   List<RebasePlanItem> dco_decode_list_rebase_plan_item(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_rebase_plan_item).toList();
+  }
+
+  @protected
+  List<RemoteDetails> dco_decode_list_remote_details(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_remote_details).toList();
   }
 
   @protected
@@ -2423,6 +3829,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   String? dco_decode_opt_String(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_String(raw);
+  }
+
+  @protected
+  FileChange? dco_decode_opt_box_autoadd_file_change(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_file_change(raw);
   }
 
   @protected
@@ -2484,6 +3896,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  RemoteDetails dco_decode_remote_details(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return RemoteDetails(
+      name: dco_decode_String(arr[0]),
+      fetchUrls: dco_decode_list_String(arr[1]),
+      pushUrls: dco_decode_list_String(arr[2]),
+    );
+  }
+
+  @protected
   RemoteInfo dco_decode_remote_info(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
@@ -2493,6 +3918,34 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       name: dco_decode_String(arr[0]),
       fetchUrl: dco_decode_opt_String(arr[1]),
       pushUrl: dco_decode_opt_String(arr[2]),
+    );
+  }
+
+  @protected
+  RepositoryInitOptions dco_decode_repository_init_options(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    return RepositoryInitOptions(
+      targetPath: dco_decode_String(arr[0]),
+      initialBranch: dco_decode_String(arr[1]),
+      createReadme: dco_decode_bool(arr[2]),
+      gitignoreTemplate: dco_decode_gitignore_template(arr[3]),
+      originUrl: dco_decode_opt_String(arr[4]),
+    );
+  }
+
+  @protected
+  RepositoryInitResult dco_decode_repository_init_result(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return RepositoryInitResult(
+      path: dco_decode_String(arr[0]),
+      operation: dco_decode_operation_result(arr[1]),
+      warnings: dco_decode_list_String(arr[2]),
     );
   }
 
@@ -2517,6 +3970,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       branches: dco_decode_list_branch_info(arr[11]),
       remotes: dco_decode_list_remote_info(arr[12]),
       stashes: dco_decode_list_stash_entry(arr[13]),
+    );
+  }
+
+  @protected
+  RepositorySnapshotPage dco_decode_repository_snapshot_page(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return RepositorySnapshotPage(
+      snapshot: dco_decode_repository_snapshot(arr[0]),
+      changes: dco_decode_file_change_page(arr[1]),
+      branches: dco_decode_branch_page(arr[2]),
     );
   }
 
@@ -2577,6 +4043,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   SequenceControl dco_decode_sequence_control(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return SequenceControl.values[raw as int];
+  }
+
+  @protected
+  SparseCheckoutState dco_decode_sparse_checkout_state(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return SparseCheckoutState(
+      enabled: dco_decode_bool(arr[0]),
+      coneMode: dco_decode_bool(arr[1]),
+      directories: dco_decode_list_String(arr[2]),
+    );
   }
 
   @protected
@@ -2652,6 +4131,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  WorkingTreeSnapshotPage dco_decode_working_tree_snapshot_page(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return WorkingTreeSnapshotPage(
+      snapshot: dco_decode_working_tree_snapshot(arr[0]),
+      changes: dco_decode_file_change_page(arr[1]),
+    );
+  }
+
+  @protected
   AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var inner = sse_decode_String(deserializer);
@@ -2681,9 +4172,39 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  CloneOptions sse_decode_box_autoadd_clone_options(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_clone_options(deserializer));
+  }
+
+  @protected
+  CommitOptions sse_decode_box_autoadd_commit_options(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_commit_options(deserializer));
+  }
+
+  @protected
+  FileChange sse_decode_box_autoadd_file_change(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_file_change(deserializer));
+  }
+
+  @protected
   RebasePlan sse_decode_box_autoadd_rebase_plan(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_rebase_plan(deserializer));
+  }
+
+  @protected
+  RepositoryInitOptions sse_decode_box_autoadd_repository_init_options(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_repository_init_options(deserializer));
   }
 
   @protected
@@ -2722,10 +4243,102 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  BranchPage sse_decode_branch_page(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_branches = sse_decode_list_branch_info(deserializer);
+    var var_nextCursor = sse_decode_opt_String(deserializer);
+    var var_totalBranches = sse_decode_u_32(deserializer);
+    return BranchPage(
+      branches: var_branches,
+      nextCursor: var_nextCursor,
+      totalBranches: var_totalBranches,
+    );
+  }
+
+  @protected
   ChangeKind sse_decode_change_kind(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var inner = sse_decode_i_32(deserializer);
     return ChangeKind.values[inner];
+  }
+
+  @protected
+  CherryPickApplicability sse_decode_cherry_pick_applicability(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return CherryPickApplicability.values[inner];
+  }
+
+  @protected
+  CloneOptions sse_decode_clone_options(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_url = sse_decode_String(deserializer);
+    var var_target = sse_decode_String(deserializer);
+    var var_remoteName = sse_decode_String(deserializer);
+    var var_branch = sse_decode_opt_String(deserializer);
+    var var_depth = sse_decode_opt_box_autoadd_u_32(deserializer);
+    var var_singleBranch = sse_decode_bool(deserializer);
+    var var_noTags = sse_decode_bool(deserializer);
+    var var_recurseSubmodules = sse_decode_bool(deserializer);
+    var var_shallowSubmodules = sse_decode_bool(deserializer);
+    var var_blobless = sse_decode_bool(deserializer);
+    var var_sparseDirectories = sse_decode_list_String(deserializer);
+    return CloneOptions(
+      url: var_url,
+      target: var_target,
+      remoteName: var_remoteName,
+      branch: var_branch,
+      depth: var_depth,
+      singleBranch: var_singleBranch,
+      noTags: var_noTags,
+      recurseSubmodules: var_recurseSubmodules,
+      shallowSubmodules: var_shallowSubmodules,
+      blobless: var_blobless,
+      sparseDirectories: var_sparseDirectories,
+    );
+  }
+
+  @protected
+  CloneResult sse_decode_clone_result(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_path = sse_decode_String(deserializer);
+    var var_operation = sse_decode_operation_result(deserializer);
+    var var_warnings = sse_decode_list_String(deserializer);
+    return CloneResult(
+      path: var_path,
+      operation: var_operation,
+      warnings: var_warnings,
+    );
+  }
+
+  @protected
+  CommitCursorPage sse_decode_commit_cursor_page(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_commits = sse_decode_list_commit_summary(deserializer);
+    var var_nextCursor = sse_decode_opt_String(deserializer);
+    var var_totalCommits = sse_decode_u_32(deserializer);
+    return CommitCursorPage(
+      commits: var_commits,
+      nextCursor: var_nextCursor,
+      totalCommits: var_totalCommits,
+    );
+  }
+
+  @protected
+  CommitDefaults sse_decode_commit_defaults(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_template = sse_decode_String(deserializer);
+    var var_cleanup = sse_decode_opt_String(deserializer);
+    var var_signingEnabled = sse_decode_bool(deserializer);
+    var var_previousMessage = sse_decode_opt_String(deserializer);
+    return CommitDefaults(
+      template: var_template,
+      cleanup: var_cleanup,
+      signingEnabled: var_signingEnabled,
+      previousMessage: var_previousMessage,
+    );
   }
 
   @protected
@@ -2752,6 +4365,33 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       committedAt: var_committedAt,
       parentOids: var_parentOids,
       diff: var_diff,
+    );
+  }
+
+  @protected
+  CommitOptions sse_decode_commit_options(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_message = sse_decode_opt_String(deserializer);
+    var var_amend = sse_decode_bool(deserializer);
+    var var_signoff = sse_decode_bool(deserializer);
+    var var_signing = sse_decode_commit_signing_mode(deserializer);
+    var var_authorName = sse_decode_opt_String(deserializer);
+    var var_authorEmail = sse_decode_opt_String(deserializer);
+    var var_authoredAt = sse_decode_opt_String(deserializer);
+    var var_allowEmpty = sse_decode_bool(deserializer);
+    var var_fixupTarget = sse_decode_opt_String(deserializer);
+    var var_squashTarget = sse_decode_opt_String(deserializer);
+    return CommitOptions(
+      message: var_message,
+      amend: var_amend,
+      signoff: var_signoff,
+      signing: var_signing,
+      authorName: var_authorName,
+      authorEmail: var_authorEmail,
+      authoredAt: var_authoredAt,
+      allowEmpty: var_allowEmpty,
+      fixupTarget: var_fixupTarget,
+      squashTarget: var_squashTarget,
     );
   }
 
@@ -2783,6 +4423,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var inner = sse_decode_i_32(deserializer);
     return CommitReferenceKind.values[inner];
+  }
+
+  @protected
+  CommitSigningMode sse_decode_commit_signing_mode(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return CommitSigningMode.values[inner];
   }
 
   @protected
@@ -2956,6 +4605,86 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  FileChangePage sse_decode_file_change_page(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_files = sse_decode_list_file_change(deserializer);
+    var var_nextCursor = sse_decode_opt_String(deserializer);
+    var var_totalFiles = sse_decode_u_32(deserializer);
+    var var_stagedCount = sse_decode_u_32(deserializer);
+    var var_unstagedCount = sse_decode_u_32(deserializer);
+    var var_conflictCount = sse_decode_u_32(deserializer);
+    var var_untrackedCount = sse_decode_u_32(deserializer);
+    return FileChangePage(
+      files: var_files,
+      nextCursor: var_nextCursor,
+      totalFiles: var_totalFiles,
+      stagedCount: var_stagedCount,
+      unstagedCount: var_unstagedCount,
+      conflictCount: var_conflictCount,
+      untrackedCount: var_untrackedCount,
+    );
+  }
+
+  @protected
+  GitCapabilities sse_decode_git_capabilities(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_version = sse_decode_String(deserializer);
+    var var_supportsRepositorySetup = sse_decode_bool(deserializer);
+    var var_supportsFixedValueConfig = sse_decode_bool(deserializer);
+    var var_supportsSparseCheckout = sse_decode_bool(deserializer);
+    return GitCapabilities(
+      version: var_version,
+      supportsRepositorySetup: var_supportsRepositorySetup,
+      supportsFixedValueConfig: var_supportsFixedValueConfig,
+      supportsSparseCheckout: var_supportsSparseCheckout,
+    );
+  }
+
+  @protected
+  GitConfigEntry sse_decode_git_config_entry(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_key = sse_decode_String(deserializer);
+    var var_value = sse_decode_String(deserializer);
+    var var_scope = sse_decode_git_config_scope(deserializer);
+    var var_origin = sse_decode_String(deserializer);
+    var var_inherited = sse_decode_bool(deserializer);
+    var var_sensitive = sse_decode_bool(deserializer);
+    return GitConfigEntry(
+      key: var_key,
+      value: var_value,
+      scope: var_scope,
+      origin: var_origin,
+      inherited: var_inherited,
+      sensitive: var_sensitive,
+    );
+  }
+
+  @protected
+  GitConfigScope sse_decode_git_config_scope(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return GitConfigScope.values[inner];
+  }
+
+  @protected
+  GitConfigSnapshot sse_decode_git_config_snapshot(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_entries = sse_decode_list_git_config_entry(deserializer);
+    return GitConfigSnapshot(entries: var_entries);
+  }
+
+  @protected
+  GitignoreTemplate sse_decode_gitignore_template(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return GitignoreTemplate.values[inner];
+  }
+
+  @protected
   GraphLane sse_decode_graph_lane(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_column = sse_decode_u_32(deserializer);
@@ -3090,6 +4819,27 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<GitConfigEntry> sse_decode_list_git_config_entry(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <GitConfigEntry>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_git_config_entry(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<int> sse_decode_list_prim_u_32_loose(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var len_ = sse_decode_i_32(deserializer);
+    return deserializer.buffer.getUint32List(len_);
+  }
+
+  @protected
   Uint32List sse_decode_list_prim_u_32_strict(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var len_ = sse_decode_i_32(deserializer);
@@ -3113,6 +4863,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var ans_ = <RebasePlanItem>[];
     for (var idx_ = 0; idx_ < len_; ++idx_) {
       ans_.add(sse_decode_rebase_plan_item(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<RemoteDetails> sse_decode_list_remote_details(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <RemoteDetails>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_remote_details(deserializer));
     }
     return ans_;
   }
@@ -3183,6 +4947,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
     if (sse_decode_bool(deserializer)) {
       return (sse_decode_String(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  FileChange? sse_decode_opt_box_autoadd_file_change(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_file_change(deserializer));
     } else {
       return null;
     }
@@ -3262,6 +5039,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  RemoteDetails sse_decode_remote_details(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_name = sse_decode_String(deserializer);
+    var var_fetchUrls = sse_decode_list_String(deserializer);
+    var var_pushUrls = sse_decode_list_String(deserializer);
+    return RemoteDetails(
+      name: var_name,
+      fetchUrls: var_fetchUrls,
+      pushUrls: var_pushUrls,
+    );
+  }
+
+  @protected
   RemoteInfo sse_decode_remote_info(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_name = sse_decode_String(deserializer);
@@ -3271,6 +5061,40 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       name: var_name,
       fetchUrl: var_fetchUrl,
       pushUrl: var_pushUrl,
+    );
+  }
+
+  @protected
+  RepositoryInitOptions sse_decode_repository_init_options(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_targetPath = sse_decode_String(deserializer);
+    var var_initialBranch = sse_decode_String(deserializer);
+    var var_createReadme = sse_decode_bool(deserializer);
+    var var_gitignoreTemplate = sse_decode_gitignore_template(deserializer);
+    var var_originUrl = sse_decode_opt_String(deserializer);
+    return RepositoryInitOptions(
+      targetPath: var_targetPath,
+      initialBranch: var_initialBranch,
+      createReadme: var_createReadme,
+      gitignoreTemplate: var_gitignoreTemplate,
+      originUrl: var_originUrl,
+    );
+  }
+
+  @protected
+  RepositoryInitResult sse_decode_repository_init_result(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_path = sse_decode_String(deserializer);
+    var var_operation = sse_decode_operation_result(deserializer);
+    var var_warnings = sse_decode_list_String(deserializer);
+    return RepositoryInitResult(
+      path: var_path,
+      operation: var_operation,
+      warnings: var_warnings,
     );
   }
 
@@ -3308,6 +5132,21 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       branches: var_branches,
       remotes: var_remotes,
       stashes: var_stashes,
+    );
+  }
+
+  @protected
+  RepositorySnapshotPage sse_decode_repository_snapshot_page(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_snapshot = sse_decode_repository_snapshot(deserializer);
+    var var_changes = sse_decode_file_change_page(deserializer);
+    var var_branches = sse_decode_branch_page(deserializer);
+    return RepositorySnapshotPage(
+      snapshot: var_snapshot,
+      changes: var_changes,
+      branches: var_branches,
     );
   }
 
@@ -3375,6 +5214,21 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var inner = sse_decode_i_32(deserializer);
     return SequenceControl.values[inner];
+  }
+
+  @protected
+  SparseCheckoutState sse_decode_sparse_checkout_state(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_enabled = sse_decode_bool(deserializer);
+    var var_coneMode = sse_decode_bool(deserializer);
+    var var_directories = sse_decode_list_String(deserializer);
+    return SparseCheckoutState(
+      enabled: var_enabled,
+      coneMode: var_coneMode,
+      directories: var_directories,
+    );
   }
 
   @protected
@@ -3451,6 +5305,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  WorkingTreeSnapshotPage sse_decode_working_tree_snapshot_page(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_snapshot = sse_decode_working_tree_snapshot(deserializer);
+    var var_changes = sse_decode_file_change_page(deserializer);
+    return WorkingTreeSnapshotPage(
+      snapshot: var_snapshot,
+      changes: var_changes,
+    );
+  }
+
+  @protected
   void sse_encode_AnyhowException(
     AnyhowException self,
     SseSerializer serializer,
@@ -3489,12 +5356,48 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_box_autoadd_clone_options(
+    CloneOptions self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_clone_options(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_commit_options(
+    CommitOptions self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_commit_options(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_file_change(
+    FileChange self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_file_change(self, serializer);
+  }
+
+  @protected
   void sse_encode_box_autoadd_rebase_plan(
     RebasePlan self,
     SseSerializer serializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_rebase_plan(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_repository_init_options(
+    RepositoryInitOptions self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_repository_init_options(self, serializer);
   }
 
   @protected
@@ -3523,9 +5426,73 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_branch_page(BranchPage self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_list_branch_info(self.branches, serializer);
+    sse_encode_opt_String(self.nextCursor, serializer);
+    sse_encode_u_32(self.totalBranches, serializer);
+  }
+
+  @protected
   void sse_encode_change_kind(ChangeKind self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_cherry_pick_applicability(
+    CherryPickApplicability self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_clone_options(CloneOptions self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.url, serializer);
+    sse_encode_String(self.target, serializer);
+    sse_encode_String(self.remoteName, serializer);
+    sse_encode_opt_String(self.branch, serializer);
+    sse_encode_opt_box_autoadd_u_32(self.depth, serializer);
+    sse_encode_bool(self.singleBranch, serializer);
+    sse_encode_bool(self.noTags, serializer);
+    sse_encode_bool(self.recurseSubmodules, serializer);
+    sse_encode_bool(self.shallowSubmodules, serializer);
+    sse_encode_bool(self.blobless, serializer);
+    sse_encode_list_String(self.sparseDirectories, serializer);
+  }
+
+  @protected
+  void sse_encode_clone_result(CloneResult self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.path, serializer);
+    sse_encode_operation_result(self.operation, serializer);
+    sse_encode_list_String(self.warnings, serializer);
+  }
+
+  @protected
+  void sse_encode_commit_cursor_page(
+    CommitCursorPage self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_list_commit_summary(self.commits, serializer);
+    sse_encode_opt_String(self.nextCursor, serializer);
+    sse_encode_u_32(self.totalCommits, serializer);
+  }
+
+  @protected
+  void sse_encode_commit_defaults(
+    CommitDefaults self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.template, serializer);
+    sse_encode_opt_String(self.cleanup, serializer);
+    sse_encode_bool(self.signingEnabled, serializer);
+    sse_encode_opt_String(self.previousMessage, serializer);
   }
 
   @protected
@@ -3541,6 +5508,21 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_i_64(self.committedAt, serializer);
     sse_encode_list_String(self.parentOids, serializer);
     sse_encode_diff_document(self.diff, serializer);
+  }
+
+  @protected
+  void sse_encode_commit_options(CommitOptions self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_opt_String(self.message, serializer);
+    sse_encode_bool(self.amend, serializer);
+    sse_encode_bool(self.signoff, serializer);
+    sse_encode_commit_signing_mode(self.signing, serializer);
+    sse_encode_opt_String(self.authorName, serializer);
+    sse_encode_opt_String(self.authorEmail, serializer);
+    sse_encode_opt_String(self.authoredAt, serializer);
+    sse_encode_bool(self.allowEmpty, serializer);
+    sse_encode_opt_String(self.fixupTarget, serializer);
+    sse_encode_opt_String(self.squashTarget, serializer);
   }
 
   @protected
@@ -3564,6 +5546,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   @protected
   void sse_encode_commit_reference_kind(
     CommitReferenceKind self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_commit_signing_mode(
+    CommitSigningMode self,
     SseSerializer serializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
@@ -3676,6 +5667,74 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_change_kind(self.unstaged, serializer);
     sse_encode_bool(self.conflicted, serializer);
     sse_encode_bool(self.untracked, serializer);
+  }
+
+  @protected
+  void sse_encode_file_change_page(
+    FileChangePage self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_list_file_change(self.files, serializer);
+    sse_encode_opt_String(self.nextCursor, serializer);
+    sse_encode_u_32(self.totalFiles, serializer);
+    sse_encode_u_32(self.stagedCount, serializer);
+    sse_encode_u_32(self.unstagedCount, serializer);
+    sse_encode_u_32(self.conflictCount, serializer);
+    sse_encode_u_32(self.untrackedCount, serializer);
+  }
+
+  @protected
+  void sse_encode_git_capabilities(
+    GitCapabilities self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.version, serializer);
+    sse_encode_bool(self.supportsRepositorySetup, serializer);
+    sse_encode_bool(self.supportsFixedValueConfig, serializer);
+    sse_encode_bool(self.supportsSparseCheckout, serializer);
+  }
+
+  @protected
+  void sse_encode_git_config_entry(
+    GitConfigEntry self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.key, serializer);
+    sse_encode_String(self.value, serializer);
+    sse_encode_git_config_scope(self.scope, serializer);
+    sse_encode_String(self.origin, serializer);
+    sse_encode_bool(self.inherited, serializer);
+    sse_encode_bool(self.sensitive, serializer);
+  }
+
+  @protected
+  void sse_encode_git_config_scope(
+    GitConfigScope self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_git_config_snapshot(
+    GitConfigSnapshot self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_list_git_config_entry(self.entries, serializer);
+  }
+
+  @protected
+  void sse_encode_gitignore_template(
+    GitignoreTemplate self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
   }
 
   @protected
@@ -3803,6 +5862,30 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_list_git_config_entry(
+    List<GitConfigEntry> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_git_config_entry(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_prim_u_32_loose(
+    List<int> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    serializer.buffer.putUint32List(
+      self is Uint32List ? self : Uint32List.fromList(self),
+    );
+  }
+
+  @protected
   void sse_encode_list_prim_u_32_strict(
     Uint32List self,
     SseSerializer serializer,
@@ -3831,6 +5914,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
       sse_encode_rebase_plan_item(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_remote_details(
+    List<RemoteDetails> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_remote_details(item, serializer);
     }
   }
 
@@ -3900,6 +5995,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_opt_box_autoadd_file_change(
+    FileChange? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_file_change(self, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -3959,11 +6067,43 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_remote_details(RemoteDetails self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.name, serializer);
+    sse_encode_list_String(self.fetchUrls, serializer);
+    sse_encode_list_String(self.pushUrls, serializer);
+  }
+
+  @protected
   void sse_encode_remote_info(RemoteInfo self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.name, serializer);
     sse_encode_opt_String(self.fetchUrl, serializer);
     sse_encode_opt_String(self.pushUrl, serializer);
+  }
+
+  @protected
+  void sse_encode_repository_init_options(
+    RepositoryInitOptions self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.targetPath, serializer);
+    sse_encode_String(self.initialBranch, serializer);
+    sse_encode_bool(self.createReadme, serializer);
+    sse_encode_gitignore_template(self.gitignoreTemplate, serializer);
+    sse_encode_opt_String(self.originUrl, serializer);
+  }
+
+  @protected
+  void sse_encode_repository_init_result(
+    RepositoryInitResult self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.path, serializer);
+    sse_encode_operation_result(self.operation, serializer);
+    sse_encode_list_String(self.warnings, serializer);
   }
 
   @protected
@@ -3986,6 +6126,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_list_branch_info(self.branches, serializer);
     sse_encode_list_remote_info(self.remotes, serializer);
     sse_encode_list_stash_entry(self.stashes, serializer);
+  }
+
+  @protected
+  void sse_encode_repository_snapshot_page(
+    RepositorySnapshotPage self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_repository_snapshot(self.snapshot, serializer);
+    sse_encode_file_change_page(self.changes, serializer);
+    sse_encode_branch_page(self.branches, serializer);
   }
 
   @protected
@@ -4039,6 +6190,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_sparse_checkout_state(
+    SparseCheckoutState self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_bool(self.enabled, serializer);
+    sse_encode_bool(self.coneMode, serializer);
+    sse_encode_list_String(self.directories, serializer);
   }
 
   @protected
@@ -4098,5 +6260,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_u_64(self.generation, serializer);
     sse_encode_repository_state(self.state, serializer);
     sse_encode_list_file_change(self.files, serializer);
+  }
+
+  @protected
+  void sse_encode_working_tree_snapshot_page(
+    WorkingTreeSnapshotPage self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_working_tree_snapshot(self.snapshot, serializer);
+    sse_encode_file_change_page(self.changes, serializer);
   }
 }

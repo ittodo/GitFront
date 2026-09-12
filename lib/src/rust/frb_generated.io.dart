@@ -35,7 +35,21 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   bool dco_decode_bool(dynamic raw);
 
   @protected
+  CloneOptions dco_decode_box_autoadd_clone_options(dynamic raw);
+
+  @protected
+  CommitOptions dco_decode_box_autoadd_commit_options(dynamic raw);
+
+  @protected
+  FileChange dco_decode_box_autoadd_file_change(dynamic raw);
+
+  @protected
   RebasePlan dco_decode_box_autoadd_rebase_plan(dynamic raw);
+
+  @protected
+  RepositoryInitOptions dco_decode_box_autoadd_repository_init_options(
+    dynamic raw,
+  );
 
   @protected
   int dco_decode_box_autoadd_u_32(dynamic raw);
@@ -47,10 +61,31 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   BranchInfo dco_decode_branch_info(dynamic raw);
 
   @protected
+  BranchPage dco_decode_branch_page(dynamic raw);
+
+  @protected
   ChangeKind dco_decode_change_kind(dynamic raw);
 
   @protected
+  CherryPickApplicability dco_decode_cherry_pick_applicability(dynamic raw);
+
+  @protected
+  CloneOptions dco_decode_clone_options(dynamic raw);
+
+  @protected
+  CloneResult dco_decode_clone_result(dynamic raw);
+
+  @protected
+  CommitCursorPage dco_decode_commit_cursor_page(dynamic raw);
+
+  @protected
+  CommitDefaults dco_decode_commit_defaults(dynamic raw);
+
+  @protected
   CommitDetail dco_decode_commit_detail(dynamic raw);
+
+  @protected
+  CommitOptions dco_decode_commit_options(dynamic raw);
 
   @protected
   CommitPage dco_decode_commit_page(dynamic raw);
@@ -60,6 +95,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   CommitReferenceKind dco_decode_commit_reference_kind(dynamic raw);
+
+  @protected
+  CommitSigningMode dco_decode_commit_signing_mode(dynamic raw);
 
   @protected
   CommitSummary dco_decode_commit_summary(dynamic raw);
@@ -90,6 +128,24 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   FileChange dco_decode_file_change(dynamic raw);
+
+  @protected
+  FileChangePage dco_decode_file_change_page(dynamic raw);
+
+  @protected
+  GitCapabilities dco_decode_git_capabilities(dynamic raw);
+
+  @protected
+  GitConfigEntry dco_decode_git_config_entry(dynamic raw);
+
+  @protected
+  GitConfigScope dco_decode_git_config_scope(dynamic raw);
+
+  @protected
+  GitConfigSnapshot dco_decode_git_config_snapshot(dynamic raw);
+
+  @protected
+  GitignoreTemplate dco_decode_gitignore_template(dynamic raw);
 
   @protected
   GraphLane dco_decode_graph_lane(dynamic raw);
@@ -128,6 +184,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<FileChange> dco_decode_list_file_change(dynamic raw);
 
   @protected
+  List<GitConfigEntry> dco_decode_list_git_config_entry(dynamic raw);
+
+  @protected
+  List<int> dco_decode_list_prim_u_32_loose(dynamic raw);
+
+  @protected
   Uint32List dco_decode_list_prim_u_32_strict(dynamic raw);
 
   @protected
@@ -135,6 +197,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<RebasePlanItem> dco_decode_list_rebase_plan_item(dynamic raw);
+
+  @protected
+  List<RemoteDetails> dco_decode_list_remote_details(dynamic raw);
 
   @protected
   List<RemoteInfo> dco_decode_list_remote_info(dynamic raw);
@@ -153,6 +218,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   String? dco_decode_opt_String(dynamic raw);
+
+  @protected
+  FileChange? dco_decode_opt_box_autoadd_file_change(dynamic raw);
 
   @protected
   int? dco_decode_opt_box_autoadd_u_32(dynamic raw);
@@ -176,10 +244,22 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   RebasePlanItem dco_decode_rebase_plan_item(dynamic raw);
 
   @protected
+  RemoteDetails dco_decode_remote_details(dynamic raw);
+
+  @protected
   RemoteInfo dco_decode_remote_info(dynamic raw);
 
   @protected
+  RepositoryInitOptions dco_decode_repository_init_options(dynamic raw);
+
+  @protected
+  RepositoryInitResult dco_decode_repository_init_result(dynamic raw);
+
+  @protected
   RepositorySnapshot dco_decode_repository_snapshot(dynamic raw);
+
+  @protected
+  RepositorySnapshotPage dco_decode_repository_snapshot_page(dynamic raw);
 
   @protected
   RepositoryState dco_decode_repository_state(dynamic raw);
@@ -198,6 +278,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   SequenceControl dco_decode_sequence_control(dynamic raw);
+
+  @protected
+  SparseCheckoutState dco_decode_sparse_checkout_state(dynamic raw);
 
   @protected
   StashEntry dco_decode_stash_entry(dynamic raw);
@@ -224,6 +307,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   WorkingTreeSnapshot dco_decode_working_tree_snapshot(dynamic raw);
 
   @protected
+  WorkingTreeSnapshotPage dco_decode_working_tree_snapshot_page(dynamic raw);
+
+  @protected
   AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
 
   @protected
@@ -239,7 +325,25 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   bool sse_decode_bool(SseDeserializer deserializer);
 
   @protected
+  CloneOptions sse_decode_box_autoadd_clone_options(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  CommitOptions sse_decode_box_autoadd_commit_options(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  FileChange sse_decode_box_autoadd_file_change(SseDeserializer deserializer);
+
+  @protected
   RebasePlan sse_decode_box_autoadd_rebase_plan(SseDeserializer deserializer);
+
+  @protected
+  RepositoryInitOptions sse_decode_box_autoadd_repository_init_options(
+    SseDeserializer deserializer,
+  );
 
   @protected
   int sse_decode_box_autoadd_u_32(SseDeserializer deserializer);
@@ -251,10 +355,33 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   BranchInfo sse_decode_branch_info(SseDeserializer deserializer);
 
   @protected
+  BranchPage sse_decode_branch_page(SseDeserializer deserializer);
+
+  @protected
   ChangeKind sse_decode_change_kind(SseDeserializer deserializer);
 
   @protected
+  CherryPickApplicability sse_decode_cherry_pick_applicability(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  CloneOptions sse_decode_clone_options(SseDeserializer deserializer);
+
+  @protected
+  CloneResult sse_decode_clone_result(SseDeserializer deserializer);
+
+  @protected
+  CommitCursorPage sse_decode_commit_cursor_page(SseDeserializer deserializer);
+
+  @protected
+  CommitDefaults sse_decode_commit_defaults(SseDeserializer deserializer);
+
+  @protected
   CommitDetail sse_decode_commit_detail(SseDeserializer deserializer);
+
+  @protected
+  CommitOptions sse_decode_commit_options(SseDeserializer deserializer);
 
   @protected
   CommitPage sse_decode_commit_page(SseDeserializer deserializer);
@@ -264,6 +391,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   CommitReferenceKind sse_decode_commit_reference_kind(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  CommitSigningMode sse_decode_commit_signing_mode(
     SseDeserializer deserializer,
   );
 
@@ -296,6 +428,26 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   FileChange sse_decode_file_change(SseDeserializer deserializer);
+
+  @protected
+  FileChangePage sse_decode_file_change_page(SseDeserializer deserializer);
+
+  @protected
+  GitCapabilities sse_decode_git_capabilities(SseDeserializer deserializer);
+
+  @protected
+  GitConfigEntry sse_decode_git_config_entry(SseDeserializer deserializer);
+
+  @protected
+  GitConfigScope sse_decode_git_config_scope(SseDeserializer deserializer);
+
+  @protected
+  GitConfigSnapshot sse_decode_git_config_snapshot(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  GitignoreTemplate sse_decode_gitignore_template(SseDeserializer deserializer);
 
   @protected
   GraphLane sse_decode_graph_lane(SseDeserializer deserializer);
@@ -340,6 +492,14 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<FileChange> sse_decode_list_file_change(SseDeserializer deserializer);
 
   @protected
+  List<GitConfigEntry> sse_decode_list_git_config_entry(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<int> sse_decode_list_prim_u_32_loose(SseDeserializer deserializer);
+
+  @protected
   Uint32List sse_decode_list_prim_u_32_strict(SseDeserializer deserializer);
 
   @protected
@@ -347,6 +507,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<RebasePlanItem> sse_decode_list_rebase_plan_item(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<RemoteDetails> sse_decode_list_remote_details(
     SseDeserializer deserializer,
   );
 
@@ -367,6 +532,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   String? sse_decode_opt_String(SseDeserializer deserializer);
+
+  @protected
+  FileChange? sse_decode_opt_box_autoadd_file_change(
+    SseDeserializer deserializer,
+  );
 
   @protected
   int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer);
@@ -390,10 +560,28 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   RebasePlanItem sse_decode_rebase_plan_item(SseDeserializer deserializer);
 
   @protected
+  RemoteDetails sse_decode_remote_details(SseDeserializer deserializer);
+
+  @protected
   RemoteInfo sse_decode_remote_info(SseDeserializer deserializer);
 
   @protected
+  RepositoryInitOptions sse_decode_repository_init_options(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  RepositoryInitResult sse_decode_repository_init_result(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   RepositorySnapshot sse_decode_repository_snapshot(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  RepositorySnapshotPage sse_decode_repository_snapshot_page(
     SseDeserializer deserializer,
   );
 
@@ -416,6 +604,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   SequenceControl sse_decode_sequence_control(SseDeserializer deserializer);
+
+  @protected
+  SparseCheckoutState sse_decode_sparse_checkout_state(
+    SseDeserializer deserializer,
+  );
 
   @protected
   StashEntry sse_decode_stash_entry(SseDeserializer deserializer);
@@ -444,6 +637,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  WorkingTreeSnapshotPage sse_decode_working_tree_snapshot_page(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   void sse_encode_AnyhowException(
     AnyhowException self,
     SseSerializer serializer,
@@ -462,8 +660,32 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_bool(bool self, SseSerializer serializer);
 
   @protected
+  void sse_encode_box_autoadd_clone_options(
+    CloneOptions self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_commit_options(
+    CommitOptions self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_file_change(
+    FileChange self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_rebase_plan(
     RebasePlan self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_repository_init_options(
+    RepositoryInitOptions self,
     SseSerializer serializer,
   );
 
@@ -477,10 +699,40 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_branch_info(BranchInfo self, SseSerializer serializer);
 
   @protected
+  void sse_encode_branch_page(BranchPage self, SseSerializer serializer);
+
+  @protected
   void sse_encode_change_kind(ChangeKind self, SseSerializer serializer);
 
   @protected
+  void sse_encode_cherry_pick_applicability(
+    CherryPickApplicability self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_clone_options(CloneOptions self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_clone_result(CloneResult self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_commit_cursor_page(
+    CommitCursorPage self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_commit_defaults(
+    CommitDefaults self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_commit_detail(CommitDetail self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_commit_options(CommitOptions self, SseSerializer serializer);
 
   @protected
   void sse_encode_commit_page(CommitPage self, SseSerializer serializer);
@@ -494,6 +746,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_commit_reference_kind(
     CommitReferenceKind self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_commit_signing_mode(
+    CommitSigningMode self,
     SseSerializer serializer,
   );
 
@@ -532,6 +790,42 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_file_change(FileChange self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_file_change_page(
+    FileChangePage self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_git_capabilities(
+    GitCapabilities self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_git_config_entry(
+    GitConfigEntry self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_git_config_scope(
+    GitConfigScope self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_git_config_snapshot(
+    GitConfigSnapshot self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_gitignore_template(
+    GitignoreTemplate self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_graph_lane(GraphLane self, SseSerializer serializer);
@@ -585,6 +879,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_git_config_entry(
+    List<GitConfigEntry> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_prim_u_32_loose(
+    List<int> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_prim_u_32_strict(
     Uint32List self,
     SseSerializer serializer,
@@ -599,6 +905,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_list_rebase_plan_item(
     List<RebasePlanItem> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_remote_details(
+    List<RemoteDetails> self,
     SseSerializer serializer,
   );
 
@@ -633,6 +945,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_opt_String(String? self, SseSerializer serializer);
 
   @protected
+  void sse_encode_opt_box_autoadd_file_change(
+    FileChange? self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer);
 
   @protected
@@ -657,11 +975,32 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_remote_details(RemoteDetails self, SseSerializer serializer);
+
+  @protected
   void sse_encode_remote_info(RemoteInfo self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_repository_init_options(
+    RepositoryInitOptions self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_repository_init_result(
+    RepositoryInitResult self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_repository_snapshot(
     RepositorySnapshot self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_repository_snapshot_page(
+    RepositorySnapshotPage self,
     SseSerializer serializer,
   );
 
@@ -693,6 +1032,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_sparse_checkout_state(
+    SparseCheckoutState self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_stash_entry(StashEntry self, SseSerializer serializer);
 
   @protected
@@ -716,6 +1061,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_working_tree_snapshot(
     WorkingTreeSnapshot self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_working_tree_snapshot_page(
+    WorkingTreeSnapshotPage self,
     SseSerializer serializer,
   );
 }

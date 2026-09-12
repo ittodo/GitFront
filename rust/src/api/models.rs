@@ -54,6 +54,101 @@ pub struct RemoteInfo {
     pub push_url: Option<String>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum GitignoreTemplate {
+    None,
+    Flutter,
+    Rust,
+    Node,
+    Python,
+    VisualStudio,
+}
+
+#[derive(Clone, Debug)]
+pub struct RepositoryInitOptions {
+    pub target_path: String,
+    pub initial_branch: String,
+    pub create_readme: bool,
+    pub gitignore_template: GitignoreTemplate,
+    pub origin_url: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct RepositoryInitResult {
+    pub path: String,
+    pub operation: OperationResult,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct CloneOptions {
+    pub url: String,
+    pub target: String,
+    pub remote_name: String,
+    pub branch: Option<String>,
+    pub depth: Option<u32>,
+    pub single_branch: bool,
+    pub no_tags: bool,
+    pub recurse_submodules: bool,
+    pub shallow_submodules: bool,
+    pub blobless: bool,
+    pub sparse_directories: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct CloneResult {
+    pub path: String,
+    pub operation: OperationResult,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum GitConfigScope {
+    System,
+    Global,
+    Local,
+    Worktree,
+    Command,
+    Unknown,
+}
+
+#[derive(Clone, Debug)]
+pub struct GitConfigEntry {
+    pub key: String,
+    pub value: String,
+    pub scope: GitConfigScope,
+    pub origin: String,
+    pub inherited: bool,
+    pub sensitive: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct GitConfigSnapshot {
+    pub entries: Vec<GitConfigEntry>,
+}
+
+#[derive(Clone, Debug)]
+pub struct RemoteDetails {
+    pub name: String,
+    pub fetch_urls: Vec<String>,
+    pub push_urls: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct SparseCheckoutState {
+    pub enabled: bool,
+    pub cone_mode: bool,
+    pub directories: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct GitCapabilities {
+    pub version: String,
+    pub supports_repository_setup: bool,
+    pub supports_fixed_value_config: bool,
+    pub supports_sparse_checkout: bool,
+}
+
 #[derive(Clone, Debug)]
 pub struct StashEntry {
     pub index: u32,
@@ -84,6 +179,37 @@ pub struct WorkingTreeSnapshot {
     pub generation: u64,
     pub state: RepositoryState,
     pub files: Vec<FileChange>,
+}
+
+#[derive(Clone, Debug)]
+pub struct FileChangePage {
+    pub files: Vec<FileChange>,
+    pub next_cursor: Option<String>,
+    pub total_files: u32,
+    pub staged_count: u32,
+    pub unstaged_count: u32,
+    pub conflict_count: u32,
+    pub untracked_count: u32,
+}
+
+#[derive(Clone, Debug)]
+pub struct BranchPage {
+    pub branches: Vec<BranchInfo>,
+    pub next_cursor: Option<String>,
+    pub total_branches: u32,
+}
+
+#[derive(Clone, Debug)]
+pub struct RepositorySnapshotPage {
+    pub snapshot: RepositorySnapshot,
+    pub changes: FileChangePage,
+    pub branches: BranchPage,
+}
+
+#[derive(Clone, Debug)]
+pub struct WorkingTreeSnapshotPage {
+    pub snapshot: WorkingTreeSnapshot,
+    pub changes: FileChangePage,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -168,6 +294,49 @@ pub struct CommitSummary {
 pub struct CommitPage {
     pub commits: Vec<CommitSummary>,
     pub next_offset: Option<u32>,
+}
+
+#[derive(Clone, Debug)]
+pub struct CommitCursorPage {
+    pub commits: Vec<CommitSummary>,
+    pub next_cursor: Option<String>,
+    pub total_commits: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum CherryPickApplicability {
+    Applicable,
+    AlreadyApplied,
+    Conflicts,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum CommitSigningMode {
+    UseConfig,
+    Sign,
+    DoNotSign,
+}
+
+#[derive(Clone, Debug)]
+pub struct CommitOptions {
+    pub message: Option<String>,
+    pub amend: bool,
+    pub signoff: bool,
+    pub signing: CommitSigningMode,
+    pub author_name: Option<String>,
+    pub author_email: Option<String>,
+    pub authored_at: Option<String>,
+    pub allow_empty: bool,
+    pub fixup_target: Option<String>,
+    pub squash_target: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct CommitDefaults {
+    pub template: String,
+    pub cleanup: Option<String>,
+    pub signing_enabled: bool,
+    pub previous_message: Option<String>,
 }
 
 #[derive(Clone, Debug)]

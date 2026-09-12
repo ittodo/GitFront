@@ -7,16 +7,38 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gitfront_preview/app_state.dart';
 import 'package:gitfront_preview/main.dart';
+import 'package:gitfront_preview/settings_store.dart';
 import 'package:gitfront_preview/src/rust/api/models.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
-class _FakeController extends GitFrontController {
-  _FakeController(this.initialState);
-
-  final GitFrontState initialState;
+class _MemorySettingsStore implements SettingsStore {
+  AppSettings settings = const AppSettings();
 
   @override
-  GitFrontState build() => initialState;
+  Future<String> get filePath async => 'memory://settings.json';
+
+  @override
+  Future<AppSettings> load() async => settings;
+
+  @override
+  Future<void> save(AppSettings settings) async {
+    this.settings = settings;
+  }
+}
+
+class _FakeController extends GitFrontController {
+  _FakeController(
+    this.initialState, {
+    this.cherryPickApplicability = CherryPickApplicability.applicable,
+  });
+
+  final GitFrontState initialState;
+  final CherryPickApplicability cherryPickApplicability;
+
+  @override
+  GitFrontState build() {
+    super.build();
+    return initialState;
+  }
 
   @override
   Future<void> initialize() async {}
@@ -25,6 +47,12 @@ class _FakeController extends GitFrontController {
   Future<void> selectCommit(CommitSummary commit) async {
     focusCommit(commit);
   }
+
+  @override
+  Future<CherryPickApplicability> assessCherryPick(
+    CommitSummary commit, {
+    int? mainlineParent,
+  }) async => cherryPickApplicability;
 }
 
 const _oid = '1111111111111111111111111111111111111111';
@@ -160,14 +188,126 @@ GitFrontState _largeRepositoryState() {
   );
 }
 
+GitFrontState _repositoryTabsState() {
+  RepositorySnapshot repository(String name) => RepositorySnapshot(
+    repositoryPath: 'D:\\repos\\$name',
+    workdir: 'D:\\repos\\$name',
+    name: name,
+    ahead: 0,
+    behind: 0,
+    state: RepositoryState.clean,
+    generation: BigInt.one,
+    files: const [],
+    branches: const [],
+    remotes: const [],
+    stashes: const [],
+  );
+
+  return GitFrontState(
+    tabs: [
+      RepoTabState(snapshot: repository('first')),
+      RepoTabState(snapshot: repository('second')),
+      RepoTabState(snapshot: repository('third')),
+    ],
+    activeIndex: 1,
+    language: AppLanguage.english,
+    initializing: false,
+  );
+}
+
 void main() {
   testWidgets('shows the empty repository workspace', (tester) async {
-    SharedPreferences.setMockInitialValues({});
-    await tester.pumpWidget(const ProviderScope(child: GitFrontApp()));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          settingsStoreProvider.overrideWithValue(_MemorySettingsStore()),
+        ],
+        child: const GitFrontApp(),
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('GitFront Preview'), findsOneWidget);
     expect(find.textContaining('repository'), findsWidgets);
+  });
+
+  testWidgets('opens repository creation and practical clone options', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          settingsStoreProvider.overrideWithValue(_MemorySettingsStore()),
+          gitFrontProvider.overrideWith(
+            () => _FakeController(
+              const GitFrontState(
+                language: AppLanguage.english,
+                initializing: false,
+              ),
+            ),
+          ),
+        ],
+        child: const GitFrontApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('New repository'));
+    await tester.pumpAndSettle();
+    expect(find.text('Initial branch'), findsOneWidget);
+    expect(find.text('.gitignore template'), findsOneWidget);
+    expect(find.text('origin URL (optional)'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Clone repository'));
+    await tester.pumpAndSettle();
+    expect(find.text('Advanced options'), findsOneWidget);
+    await tester.tap(find.text('Advanced options'));
+    await tester.pumpAndSettle();
+    expect(find.text('Remote name'), findsOneWidget);
+    expect(find.text('Download file contents on demand'), findsOneWidget);
+  });
+
+  testWidgets('reorders repository tabs by dragging and keeps selection', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1800, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final store = _MemorySettingsStore();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          settingsStoreProvider.overrideWithValue(store),
+          gitFrontProvider.overrideWith(
+            () => _FakeController(_repositoryTabsState()),
+          ),
+        ],
+        child: const GitFrontApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final first = find.text('first');
+    final third = find.text('third');
+    final gesture = await tester.startGesture(tester.getCenter(first));
+    await gesture.moveTo(tester.getCenter(third));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(GitFrontApp)),
+    );
+    final state = container.read(gitFrontProvider);
+    expect(state.tabs.first.snapshot.name, isNot('first'));
+    expect(state.activeTab?.snapshot.name, 'second');
+    expect(
+      store.settings.openRepositories,
+      state.tabs.map((tab) => tab.snapshot.workdir).toList(),
+    );
   });
 
   testWidgets('shows typed refs and opens commit actions on right click', (
@@ -177,11 +317,11 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    SharedPreferences.setMockInitialValues({});
     final state = _historyState();
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          settingsStoreProvider.overrideWithValue(_MemorySettingsStore()),
           gitFrontProvider.overrideWith(() => _FakeController(state)),
         ],
         child: const GitFrontApp(),
@@ -222,16 +362,51 @@ void main() {
     expect(find.text('Copy full commit hash'), findsOneWidget);
   });
 
+  testWidgets('disables cherry-pick when the simulated result has no changes', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1800, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          settingsStoreProvider.overrideWithValue(_MemorySettingsStore()),
+          gitFrontProvider.overrideWith(
+            () => _FakeController(
+              _historyState(),
+              cherryPickApplicability: CherryPickApplicability.alreadyApplied,
+            ),
+          ),
+        ],
+        child: const GitFrontApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.text('feat: typed commit references'),
+      buttons: kSecondaryMouseButton,
+    );
+    await tester.pumpAndSettle();
+
+    final item = tester.widget<MenuItemButton>(
+      find.widgetWithText(MenuItemButton, 'Cherry-pick · Already applied'),
+    );
+    expect(item.onPressed, isNull);
+  });
+
   testWidgets('keeps very large repository lists virtualized', (tester) async {
     tester.view.physicalSize = const Size(1800, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    SharedPreferences.setMockInitialValues({});
     final state = _largeRepositoryState();
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          settingsStoreProvider.overrideWithValue(_MemorySettingsStore()),
           gitFrontProvider.overrideWith(() => _FakeController(state)),
         ],
         child: const GitFrontApp(),
