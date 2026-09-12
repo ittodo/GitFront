@@ -30,8 +30,13 @@ jobs:
       - name: Rust lint
         working-directory: rust
         run: cargo clippy --all-targets -- -D warnings
-      - name: Rust tests
+      - name: Rust library tests
         working-directory: rust
-        run: cargo test
+        run: cargo test --locked --lib --bins
+      - name: Rust repository integration tests
+        working-directory: rust
+        env:
+          RUST_BACKTRACE: '1'
+        run: cargo test --locked --test repository_integration -- --test-threads=1
       - name: Windows build
         run: flutter build windows --debug
