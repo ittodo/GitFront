@@ -7,9 +7,9 @@ import '../frb_generated.dart';
 import 'models.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `append_operation`, `assign_graph_lanes_with_state`, `assign_graph_lanes`, `branch_page`, `build_reset_preview`, `build_snapshot`, `change_page`, `cleanup_rebase_session`, `collect_branches`, `collect_remotes`, `collect_stashes`, `collect_status`, `config_scope`, `conflict_ours_label`, `conflict_theirs_label`, `control_sequence`, `convert_diff`, `delta_status`, `display_config_origin`, `display_path`, `ensure_clean_tracked`, `ensure_history_oids`, `ensure_no_operation_in_progress`, `find_commit`, `format_git_error`, `git_output_lines`, `gitignore_contents`, `head_information`, `hide_console_window`, `is_binary`, `is_sensitive_config_key`, `map_repository_state`, `next_generation`, `normalize_sparse_directories`, `nul_pathspec`, `parse_conflict_regions`, `quoted_editor_command`, `read_blob`, `rebase_action_name`, `rebase_session_path`, `redact`, `reference_rank`, `references_by_oid`, `replace_branch_cache`, `replace_change_cache`, `result_from_output`, `run_config_mutation`, `run_git_capture_with_stdin`, `run_git_capture`, `run_git_without_repo_named`, `run_git`, `safe_relative_path`, `safe_worktree_path`, `sanitize_todo`, `select_hunk_lines`, `select_hunk`, `sequence_editor_path`, `short_reference`, `staged_kind`, `start_history_cache`, `unstaged_kind`, `untracked_collision_root`, `validate_branch_name`, `validate_config_key`, `validate_config_value`, `validate_identity`, `validate_mainline`, `validate_optional_url`, `validate_rebase_plan`, `validate_ref_name`, `validate_remote_name`, `validate_tag_name`
-// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `BranchCache`, `ChangeCache`, `HistoryCache`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `drop`, `fmt`, `fmt`, `fmt`
+// These functions are ignored because they are not marked as `pub`: `append_operation`, `assign_graph_lanes_with_state`, `assign_graph_lanes`, `branch_page`, `build_reset_preview`, `build_snapshot`, `change_page`, `cleanup_rebase_session`, `collect_branches`, `collect_remotes`, `collect_stashes`, `collect_status`, `collect_submodules`, `config_scope`, `conflict_ours_label`, `conflict_theirs_label`, `control_sequence`, `convert_diff`, `delta_status`, `display_config_origin`, `display_path`, `ensure_clean_tracked`, `ensure_history_oids`, `ensure_no_operation_in_progress`, `find_commit`, `format_git_error`, `git_output_lines`, `gitignore_contents`, `head_information`, `hide_console_window`, `is_binary`, `is_sensitive_config_key`, `map_repository_state`, `next_generation`, `normalize_sparse_directories`, `nul_pathspec`, `parse_conflict_regions`, `quoted_editor_command`, `read_blob`, `rebase_action_name`, `rebase_session_path`, `redact`, `reference_rank`, `references_by_oid`, `replace_branch_cache`, `replace_change_cache`, `repository_cache_key`, `result_from_output`, `run_config_mutation`, `run_git_capture_with_stdin`, `run_git_capture`, `run_git_without_repo_named`, `run_git_without_repo_raw`, `run_git`, `safe_relative_path`, `safe_worktree_path`, `sanitize_todo`, `select_hunk_lines`, `select_hunk`, `sequence_editor_path`, `short_reference`, `staged_kind`, `start_history_cache`, `submodule_fingerprint`, `submodule_page`, `submodule_remove_fingerprint`, `submodule_update_command`, `unstaged_kind`, `untracked_collision_root`, `validate_branch_name`, `validate_config_component`, `validate_config_key`, `validate_config_value`, `validate_identity`, `validate_mainline`, `validate_optional_url`, `validate_rebase_plan`, `validate_ref_name`, `validate_remote_name`, `validate_subtree_values`, `validate_tag_name`, `write_subtree_registry_unlocked`, `write_subtree_registry`
+// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `BranchCache`, `ChangeCache`, `HistoryCache`, `SubmoduleCache`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `drop`, `fmt`, `fmt`, `fmt`, `fmt`
 
 Future<String> gitVersion() => RustLib.instance.api.crateApiGitGitVersion();
 
@@ -410,6 +410,100 @@ Future<OperationResult> setSparseCheckout({
 Future<OperationResult> disableSparseCheckout({required String path}) =>
     RustLib.instance.api.crateApiGitDisableSparseCheckout(path: path);
 
+Future<SubmodulePage> listSubmodules({
+  required String path,
+  required bool recursive,
+  required int limit,
+}) => RustLib.instance.api.crateApiGitListSubmodules(
+  path: path,
+  recursive: recursive,
+  limit: limit,
+);
+
+Future<SubmodulePage> listSubmodulesCursor({
+  required String path,
+  required String cursor,
+  required int limit,
+}) => RustLib.instance.api.crateApiGitListSubmodulesCursor(
+  path: path,
+  cursor: cursor,
+  limit: limit,
+);
+
+Future<OperationResult> initSubmodules({
+  required String path,
+  required List<String> paths,
+  required bool recursive,
+}) => RustLib.instance.api.crateApiGitInitSubmodules(
+  path: path,
+  paths: paths,
+  recursive: recursive,
+);
+
+Future<OperationResult> updateSubmodules({
+  required String path,
+  required List<String> paths,
+  required bool recursive,
+  required SubmoduleUpdateMode mode,
+}) => RustLib.instance.api.crateApiGitUpdateSubmodules(
+  path: path,
+  paths: paths,
+  recursive: recursive,
+  mode: mode,
+);
+
+Future<OperationResult> syncSubmodules({
+  required String path,
+  required List<String> paths,
+  required bool recursive,
+}) => RustLib.instance.api.crateApiGitSyncSubmodules(
+  path: path,
+  paths: paths,
+  recursive: recursive,
+);
+
+Future<OperationResult> addSubmodule({
+  required String path,
+  required SubmoduleAddOptions options,
+}) =>
+    RustLib.instance.api.crateApiGitAddSubmodule(path: path, options: options);
+
+Future<SubmoduleRemovePreview> previewRemoveSubmodule({
+  required String path,
+  required String submodulePath,
+}) => RustLib.instance.api.crateApiGitPreviewRemoveSubmodule(
+  path: path,
+  submodulePath: submodulePath,
+);
+
+Future<OperationResult> removeSubmodule({
+  required String path,
+  required String submodulePath,
+  required String expectedFingerprint,
+  required String confirmation,
+}) => RustLib.instance.api.crateApiGitRemoveSubmodule(
+  path: path,
+  submodulePath: submodulePath,
+  expectedFingerprint: expectedFingerprint,
+  confirmation: confirmation,
+);
+
+Future<List<SubtreeInfo>> listSubtrees({required String path}) =>
+    RustLib.instance.api.crateApiGitListSubtrees(path: path);
+
+Future<OperationResult> registerSubtree({
+  required String path,
+  required SubtreeInfo subtree,
+}) => RustLib.instance.api.crateApiGitRegisterSubtree(
+  path: path,
+  subtree: subtree,
+);
+
+Future<OperationResult> forgetSubtree({
+  required String path,
+  required String id,
+}) => RustLib.instance.api.crateApiGitForgetSubtree(path: path, id: id);
+
 Future<OperationResult> createBranch({
   required String path,
   required String name,
@@ -579,3 +673,18 @@ Future<OperationResult> openExternalFile({
   editor: editor,
   customExecutable: customExecutable,
 );
+
+Stream<OperationEvent> runSubtreeOperation({
+  required String path,
+  required String operationId,
+  required SubtreeOperationOptions options,
+}) => RustLib.instance.api.crateApiGitRunSubtreeOperation(
+  path: path,
+  operationId: operationId,
+  options: options,
+);
+
+Future<OperationResult> cancelGitOperation({required String operationId}) =>
+    RustLib.instance.api.crateApiGitCancelGitOperation(
+      operationId: operationId,
+    );

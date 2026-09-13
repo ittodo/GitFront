@@ -26,6 +26,16 @@ class GitFrontStrings {
   String get branches => text('브랜치', 'Branches');
   String get remotes => text('원격', 'Remotes');
   String get stashes => text('스태시', 'Stashes');
+  String get submodules => 'Submodules';
+  String get manageSubtrees => text('Subtree 관리', 'Manage subtrees');
+  String get initialize => text('초기화', 'Initialize');
+  String get updateRecorded =>
+      text('기록된 커밋으로 업데이트', 'Update to recorded commits');
+  String get updateRemote =>
+      text('원격 최신 커밋으로 업데이트', 'Update from configured remotes');
+  String get synchronize => text('URL 동기화', 'Synchronize URLs');
+  String get openAsTab => text('새 탭으로 열기', 'Open as tab');
+  String get removeSubmodule => text('Submodule 제거', 'Remove submodule');
   String get refresh => text('새로고침', 'Refresh');
   String get fetch => 'Fetch';
   String get pull => 'Pull';

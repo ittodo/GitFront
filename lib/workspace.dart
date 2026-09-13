@@ -5,6 +5,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
+import 'package:path/path.dart' as p;
 
 import 'app_state.dart';
 import 'l10n.dart';
@@ -747,6 +748,19 @@ class _RepositoryToolbar extends ConsumerWidget {
                 ),
               ),
             ),
+            IconButton(
+              tooltip: strings.manageSubtrees,
+              onPressed: tab.busy
+                  ? null
+                  : () => showDialog<void>(
+                      context: context,
+                      builder: (_) => _SubtreeManagerDialog(
+                        strings: strings,
+                        repositoryPath: tab.snapshot.workdir,
+                      ),
+                    ),
+              icon: const Icon(Icons.account_tree_outlined),
+            ),
             if (tab.busy)
               const Padding(
                 padding: EdgeInsets.only(left: 10),
@@ -992,25 +1006,33 @@ class _RepositorySidebar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return _VirtualSidebarList(
-      strings: strings,
-      tab: tab,
-      onCreateBranch: () => _createBranch(context, ref),
-      onSaveStash: () => _saveStash(context, ref),
-      onSwitchBranch: (branch) => _switchBranch(ref, branch),
-      onTrackRemote: (branch) => _trackRemote(context, ref, branch),
-      onManageRemotes: () => showDialog<void>(
-        context: context,
-        builder: (context) => _RemoteSettingsDialog(
-          strings: strings,
-          repositoryPath: tab.snapshot.workdir,
+    return Column(
+      children: [
+        _SubmodulePanel(strings: strings, tab: tab, onError: onError),
+        const Divider(height: 1),
+        Expanded(
+          child: _VirtualSidebarList(
+            strings: strings,
+            tab: tab,
+            onCreateBranch: () => _createBranch(context, ref),
+            onSaveStash: () => _saveStash(context, ref),
+            onSwitchBranch: (branch) => _switchBranch(ref, branch),
+            onTrackRemote: (branch) => _trackRemote(context, ref, branch),
+            onManageRemotes: () => showDialog<void>(
+              context: context,
+              builder: (context) => _RemoteSettingsDialog(
+                strings: strings,
+                repositoryPath: tab.snapshot.workdir,
+              ),
+            ),
+            onBranchAction: (branch, action) =>
+                _branchAction(context, ref, branch, action),
+            onShowStash: (stash) => _showStash(context, stash),
+            onStashAction: (stash, action) =>
+                _stashAction(context, ref, stash, action),
+          ),
         ),
-      ),
-      onBranchAction: (branch, action) =>
-          _branchAction(context, ref, branch, action),
-      onShowStash: (stash) => _showStash(context, stash),
-      onStashAction: (stash, action) =>
-          _stashAction(context, ref, stash, action),
+      ],
     );
   }
 
@@ -1273,6 +1295,408 @@ class _SidebarEmptyItem extends _SidebarListItem {
 
 typedef _BranchActionCallback = void Function(BranchInfo branch, String action);
 typedef _StashActionCallback = void Function(StashEntry stash, String action);
+
+class _SubmodulePanel extends ConsumerStatefulWidget {
+  const _SubmodulePanel({
+    required this.strings,
+    required this.tab,
+    required this.onError,
+  });
+
+  final GitFrontStrings strings;
+  final RepoTabState tab;
+  final ValueChanged<Object> onError;
+
+  @override
+  ConsumerState<_SubmodulePanel> createState() => _SubmodulePanelState();
+}
+
+class _SubmodulePanelState extends ConsumerState<_SubmodulePanel> {
+  bool expanded = false;
+  bool loading = false;
+  List<SubmoduleInfo> modules = const [];
+  String? nextCursor;
+  int total = 0;
+  final selected = <String>{};
+
+  @override
+  void didUpdateWidget(covariant _SubmodulePanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (expanded &&
+        oldWidget.tab.snapshot.generation != widget.tab.snapshot.generation &&
+        !loading) {
+      unawaited(_load());
+    }
+  }
+
+  Future<void> _load({bool more = false}) async {
+    if (loading) return;
+    setState(() => loading = true);
+    try {
+      final page = more && nextCursor != null
+          ? await git_api.listSubmodulesCursor(
+              path: widget.tab.snapshot.workdir,
+              cursor: nextCursor!,
+              limit: 100,
+            )
+          : await git_api.listSubmodules(
+              path: widget.tab.snapshot.workdir,
+              recursive: true,
+              limit: 100,
+            );
+      if (!mounted) return;
+      setState(() {
+        modules = more ? [...modules, ...page.submodules] : page.submodules;
+        selected.removeWhere(
+          (path) => !modules.any((module) => module.path == path),
+        );
+        nextCursor = page.nextCursor;
+        total = page.totalSubmodules;
+        loading = false;
+      });
+    } catch (error) {
+      if (mounted) setState(() => loading = false);
+      widget.onError(error);
+    }
+  }
+
+  Future<void> _run(
+    String label,
+    Future<OperationResult> Function(String) action,
+  ) async {
+    try {
+      await ref
+          .read(gitFrontProvider.notifier)
+          .runOperation(label, action, reloadHistory: true);
+      await _load();
+    } catch (error) {
+      widget.onError(error);
+    }
+  }
+
+  List<String> get _paths => selected.toList(growable: false);
+
+  Future<void> _add() async {
+    final options = await showDialog<SubmoduleAddOptions>(
+      context: context,
+      builder: (_) => _AddSubmoduleDialog(strings: widget.strings),
+    );
+    if (options == null) return;
+    await _run(
+      'Add submodule',
+      (path) => git_api.addSubmodule(path: path, options: options),
+    );
+  }
+
+  Future<void> _remove(SubmoduleInfo module) async {
+    try {
+      final preview = await git_api.previewRemoveSubmodule(
+        path: widget.tab.snapshot.workdir,
+        submodulePath: module.path,
+      );
+      if (!mounted ||
+          !await _confirmTyped(
+            context,
+            title: widget.strings.removeSubmodule,
+            value: module.path,
+          )) {
+        return;
+      }
+      await _run(
+        'Remove submodule ${module.path}',
+        (path) => git_api.removeSubmodule(
+          path: path,
+          submodulePath: module.path,
+          expectedFingerprint: preview.fingerprint,
+          confirmation: module.path,
+        ),
+      );
+    } catch (error) {
+      widget.onError(error);
+    }
+  }
+
+  Future<void> _open(SubmoduleInfo module) async {
+    try {
+      await ref
+          .read(gitFrontProvider.notifier)
+          .openPath(p.join(widget.tab.snapshot.workdir, module.path));
+    } catch (error) {
+      widget.onError(error);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = widget.strings;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ListTile(
+          dense: true,
+          leading: Icon(expanded ? Icons.expand_more : Icons.chevron_right),
+          title: Text('${strings.submodules}${total > 0 ? ' ($total)' : ''}'),
+          onTap: () {
+            setState(() => expanded = !expanded);
+            if (expanded && modules.isEmpty) unawaited(_load());
+          },
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                tooltip: strings.add,
+                onPressed: widget.tab.busy ? null : _add,
+                icon: const Icon(Icons.add, size: 18),
+              ),
+              PopupMenuButton<String>(
+                enabled: !widget.tab.busy,
+                onSelected: (action) async {
+                  switch (action) {
+                    case 'init':
+                      await _run(
+                        'Initialize submodules',
+                        (path) => git_api.initSubmodules(
+                          path: path,
+                          paths: _paths,
+                          recursive: true,
+                        ),
+                      );
+                    case 'update':
+                      await _run(
+                        'Update submodules',
+                        (path) => git_api.updateSubmodules(
+                          path: path,
+                          paths: _paths,
+                          recursive: true,
+                          mode: SubmoduleUpdateMode.recorded,
+                        ),
+                      );
+                    case 'remote':
+                      if (!await _confirmAction(
+                        context,
+                        strings: strings,
+                        title: strings.updateRemote,
+                        message: strings.text(
+                          '선택한 Submodule을 설정된 원격 브랜치의 최신 커밋으로 이동합니다.',
+                          'Move the selected submodules to the latest configured remote commits.',
+                        ),
+                      )) {
+                        return;
+                      }
+                      await _run(
+                        'Update submodules from remotes',
+                        (path) => git_api.updateSubmodules(
+                          path: path,
+                          paths: _paths,
+                          recursive: true,
+                          mode: SubmoduleUpdateMode.remote,
+                        ),
+                      );
+                    case 'sync':
+                      await _run(
+                        'Synchronize submodules',
+                        (path) => git_api.syncSubmodules(
+                          path: path,
+                          paths: _paths,
+                          recursive: true,
+                        ),
+                      );
+                  }
+                },
+                itemBuilder: (_) => [
+                  PopupMenuItem(value: 'init', child: Text(strings.initialize)),
+                  PopupMenuItem(
+                    value: 'update',
+                    child: Text(strings.updateRecorded),
+                  ),
+                  PopupMenuItem(
+                    value: 'remote',
+                    child: Text(strings.updateRemote),
+                  ),
+                  PopupMenuItem(
+                    value: 'sync',
+                    child: Text(strings.synchronize),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        if (expanded)
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 260),
+            child: loading && modules.isEmpty
+                ? const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: modules.length + (nextCursor == null ? 0 : 1),
+                    itemBuilder: (context, index) {
+                      if (index == modules.length) {
+                        return TextButton(
+                          onPressed: loading ? null : () => _load(more: true),
+                          child: Text(strings.loadMore),
+                        );
+                      }
+                      final module = modules[index];
+                      final initialized =
+                          module.state != SubmoduleState.uninitialized &&
+                          module.state != SubmoduleState.missing;
+                      final statusLabel = switch (module.state) {
+                        SubmoduleState.uninitialized => strings.text(
+                          '초기화 안 됨',
+                          'Uninitialized',
+                        ),
+                        SubmoduleState.clean => strings.text('정상', 'Clean'),
+                        SubmoduleState.checkedOutDifferent => strings.text(
+                          '다른 커밋',
+                          'Different commit',
+                        ),
+                        SubmoduleState.modified => strings.text(
+                          '수정됨',
+                          'Modified',
+                        ),
+                        SubmoduleState.untracked => strings.text(
+                          '미추적 파일',
+                          'Untracked files',
+                        ),
+                        SubmoduleState.conflicted => strings.text(
+                          '충돌',
+                          'Conflicted',
+                        ),
+                        SubmoduleState.missing => strings.text(
+                          '경로 없음',
+                          'Missing',
+                        ),
+                      };
+                      return ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.only(
+                          left: 8.0 + module.depth * 14,
+                          right: 4,
+                        ),
+                        leading: Checkbox(
+                          value: selected.contains(module.path),
+                          onChanged: (value) => setState(() {
+                            value == true
+                                ? selected.add(module.path)
+                                : selected.remove(module.path);
+                          }),
+                        ),
+                        title: Text(
+                          module.path,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        subtitle: Text(
+                          '$statusLabel · ${(module.headOid ?? module.indexOid ?? '--------').substring(0, 8)}',
+                          maxLines: 1,
+                        ),
+                        onTap: initialized ? () => _open(module) : null,
+                        trailing: PopupMenuButton<String>(
+                          onSelected: (value) =>
+                              value == 'open' ? _open(module) : _remove(module),
+                          itemBuilder: (_) => [
+                            if (initialized)
+                              PopupMenuItem(
+                                value: 'open',
+                                child: Text(strings.openAsTab),
+                              ),
+                            PopupMenuItem(
+                              value: 'remove',
+                              child: Text(strings.removeSubmodule),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
+      ],
+    );
+  }
+}
+
+class _AddSubmoduleDialog extends StatefulWidget {
+  const _AddSubmoduleDialog({required this.strings});
+  final GitFrontStrings strings;
+
+  @override
+  State<_AddSubmoduleDialog> createState() => _AddSubmoduleDialogState();
+}
+
+class _AddSubmoduleDialogState extends State<_AddSubmoduleDialog> {
+  final url = TextEditingController();
+  final path = TextEditingController();
+  final branch = TextEditingController();
+  final depth = TextEditingController();
+
+  @override
+  void dispose() {
+    url.dispose();
+    path.dispose();
+    branch.dispose();
+    depth.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text(widget.strings.text('Submodule 추가', 'Add submodule')),
+    content: SizedBox(
+      width: 500,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: url,
+            onChanged: (_) => setState(() {}),
+            decoration: InputDecoration(labelText: widget.strings.repoUrl),
+          ),
+          TextField(
+            controller: path,
+            onChanged: (_) => setState(() {}),
+            decoration: InputDecoration(labelText: widget.strings.destination),
+          ),
+          TextField(
+            controller: branch,
+            decoration: InputDecoration(labelText: widget.strings.branchOrTag),
+          ),
+          TextField(
+            controller: depth,
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(labelText: widget.strings.cloneDepth),
+          ),
+        ],
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: Text(widget.strings.cancel),
+      ),
+      FilledButton(
+        onPressed: url.text.trim().isEmpty || path.text.trim().isEmpty
+            ? null
+            : () => Navigator.pop(
+                context,
+                SubmoduleAddOptions(
+                  url: url.text.trim(),
+                  path: path.text.trim(),
+                  name: null,
+                  branch: branch.text.trim().isEmpty
+                      ? null
+                      : branch.text.trim(),
+                  depth: int.tryParse(depth.text.trim()),
+                ),
+              ),
+        child: Text(widget.strings.add),
+      ),
+    ],
+  );
+}
 
 class _VirtualSidebarList extends ConsumerStatefulWidget {
   const _VirtualSidebarList({
@@ -4790,6 +5214,358 @@ class _CloneDialogState extends State<_CloneDialog> {
             );
           },
           child: Text(widget.strings.cloneRepository),
+        ),
+      ],
+    );
+  }
+}
+
+class _SubtreeManagerDialog extends ConsumerStatefulWidget {
+  const _SubtreeManagerDialog({
+    required this.strings,
+    required this.repositoryPath,
+  });
+
+  final GitFrontStrings strings;
+  final String repositoryPath;
+
+  @override
+  ConsumerState<_SubtreeManagerDialog> createState() =>
+      _SubtreeManagerDialogState();
+}
+
+class _SubtreeManagerDialogState extends ConsumerState<_SubtreeManagerDialog> {
+  final prefix = TextEditingController();
+  final repository = TextEditingController();
+  final reference = TextEditingController(text: 'main');
+  List<SubtreeInfo> entries = const [];
+  List<String> output = const [];
+  GitCapabilities? capabilities;
+  bool squash = true;
+  bool loading = true;
+  String? operationId;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  @override
+  void dispose() {
+    prefix.dispose();
+    repository.dispose();
+    reference.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    try {
+      final values = await Future.wait<Object>([
+        git_api.gitCapabilities(),
+        git_api.listSubtrees(path: widget.repositoryPath),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        capabilities = values[0] as GitCapabilities;
+        entries = values[1] as List<SubtreeInfo>;
+        loading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        output = [...output, error.toString()];
+        loading = false;
+      });
+    }
+  }
+
+  SubtreeInfo? _formEntry() {
+    if (prefix.text.trim().isEmpty ||
+        repository.text.trim().isEmpty ||
+        reference.text.trim().isEmpty) {
+      return null;
+    }
+    return SubtreeInfo(
+      id: 'st${DateTime.now().microsecondsSinceEpoch}',
+      prefix: prefix.text.trim(),
+      repository: repository.text.trim(),
+      reference: reference.text.trim(),
+      squash: squash,
+    );
+  }
+
+  Future<void> _register() async {
+    final entry = _formEntry();
+    if (entry == null) return;
+    try {
+      await ref
+          .read(gitFrontProvider.notifier)
+          .runOperation(
+            'Register subtree',
+            (path) => git_api.registerSubtree(path: path, subtree: entry),
+          );
+      await _load();
+    } catch (error) {
+      if (mounted) setState(() => output = [...output, error.toString()]);
+    }
+  }
+
+  Future<void> _run(SubtreeOperationOptions options) async {
+    final id = 'subtree${DateTime.now().microsecondsSinceEpoch}';
+    setState(() {
+      operationId = id;
+      output = const [];
+    });
+    try {
+      await for (final event in git_api.runSubtreeOperation(
+        path: widget.repositoryPath,
+        operationId: id,
+        options: options,
+      )) {
+        ref.read(gitFrontProvider.notifier).recordOperationEvent(event);
+        if (!mounted) continue;
+        setState(() {
+          output = [...output, event.message];
+          if (output.length > 100) output = output.sublist(output.length - 100);
+        });
+      }
+      await ref
+          .read(gitFrontProvider.notifier)
+          .refresh(repositoryPath: widget.repositoryPath, reloadHistory: true);
+      await _load();
+    } catch (error) {
+      if (mounted) setState(() => output = [...output, error.toString()]);
+    } finally {
+      if (mounted) setState(() => operationId = null);
+    }
+  }
+
+  Future<void> _runEntry(SubtreeInfo entry, SubtreeAction action) async {
+    if (action == SubtreeAction.push &&
+        !await _confirmAction(
+          context,
+          strings: widget.strings,
+          title: 'Subtree push',
+          message: '${entry.repository}  ${entry.reference}',
+        )) {
+      return;
+    }
+    String? branch;
+    if (action == SubtreeAction.split) {
+      if (!mounted) return;
+      branch = await _textPrompt(
+        context,
+        title: 'Subtree split',
+        label: widget.strings.text(
+          '결과 브랜치 (비워도 됨)',
+          'Result branch (optional)',
+        ),
+        allowEmpty: true,
+      );
+      if (branch == null) return;
+    }
+    await _run(
+      SubtreeOperationOptions(
+        action: action,
+        prefix: entry.prefix,
+        repository: action == SubtreeAction.split ? null : entry.repository,
+        reference: action == SubtreeAction.split ? null : entry.reference,
+        squash: entry.squash,
+        branch: branch?.isEmpty == true ? null : branch,
+      ),
+    );
+  }
+
+  Future<void> _forget(SubtreeInfo entry) async {
+    try {
+      await ref
+          .read(gitFrontProvider.notifier)
+          .runOperation(
+            'Forget subtree ${entry.prefix}',
+            (path) => git_api.forgetSubtree(path: path, id: entry.id),
+          );
+      await _load();
+    } catch (error) {
+      if (mounted) setState(() => output = [...output, error.toString()]);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = widget.strings;
+    final supported = capabilities?.supportsSubtree ?? false;
+    return AlertDialog(
+      title: Text(strings.manageSubtrees),
+      content: SizedBox(
+        width: 720,
+        height: 560,
+        child: loading
+            ? const Center(child: CircularProgressIndicator())
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (!supported)
+                    MaterialBanner(
+                      content: Text(
+                        capabilities?.subtreeDiagnostic ??
+                            strings.text(
+                              '시스템 Git에서 subtree를 사용할 수 없습니다.',
+                              'Subtree is unavailable in the system Git installation.',
+                            ),
+                      ),
+                      actions: const [SizedBox.shrink()],
+                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: prefix,
+                          onChanged: (_) => setState(() {}),
+                          decoration: const InputDecoration(
+                            labelText: 'Prefix',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: repository,
+                          onChanged: (_) => setState(() {}),
+                          decoration: InputDecoration(
+                            labelText: strings.repoUrl,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        width: 120,
+                        child: TextField(
+                          controller: reference,
+                          onChanged: (_) => setState(() {}),
+                          decoration: const InputDecoration(labelText: 'Ref'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  CheckboxListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    value: squash,
+                    onChanged: (value) =>
+                        setState(() => squash = value ?? true),
+                    title: const Text('Squash'),
+                  ),
+                  Row(
+                    children: [
+                      FilledButton.icon(
+                        onPressed:
+                            supported &&
+                                operationId == null &&
+                                _formEntry() != null
+                            ? () {
+                                final entry = _formEntry()!;
+                                _run(
+                                  SubtreeOperationOptions(
+                                    action: SubtreeAction.add,
+                                    prefix: entry.prefix,
+                                    repository: entry.repository,
+                                    reference: entry.reference,
+                                    squash: entry.squash,
+                                    branch: null,
+                                  ),
+                                );
+                              }
+                            : null,
+                        icon: const Icon(Icons.add),
+                        label: Text(strings.add),
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton(
+                        onPressed: operationId == null && _formEntry() != null
+                            ? _register
+                            : null,
+                        child: Text(
+                          strings.text('기존 Subtree 등록', 'Register existing'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Divider(),
+                  Expanded(
+                    child: ListView(
+                      children: [
+                        for (final entry in entries)
+                          ListTile(
+                            leading: const Icon(Icons.account_tree_outlined),
+                            title: Text(entry.prefix),
+                            subtitle: Text(
+                              '${entry.repository} · ${entry.reference}${entry.squash ? ' · squash' : ''}',
+                            ),
+                            trailing: PopupMenuButton<String>(
+                              enabled: supported && operationId == null,
+                              onSelected: (action) => switch (action) {
+                                'pull' => _runEntry(entry, SubtreeAction.pull),
+                                'push' => _runEntry(entry, SubtreeAction.push),
+                                'split' => _runEntry(
+                                  entry,
+                                  SubtreeAction.split,
+                                ),
+                                _ => _forget(entry),
+                              },
+                              itemBuilder: (_) => const [
+                                PopupMenuItem(
+                                  value: 'pull',
+                                  child: Text('Pull'),
+                                ),
+                                PopupMenuItem(
+                                  value: 'push',
+                                  child: Text('Push…'),
+                                ),
+                                PopupMenuItem(
+                                  value: 'split',
+                                  child: Text('Split…'),
+                                ),
+                                PopupMenuDivider(),
+                                PopupMenuItem(
+                                  value: 'forget',
+                                  child: Text('Forget'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        if (output.isNotEmpty)
+                          Container(
+                            margin: const EdgeInsets.only(top: 8),
+                            padding: const EdgeInsets.all(10),
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.surfaceContainerHighest,
+                            child: SelectableText(
+                              output.join('\n'),
+                              style: const TextStyle(
+                                fontFamily: 'monospace',
+                                fontSize: 11,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+      ),
+      actions: [
+        if (operationId != null)
+          TextButton.icon(
+            onPressed: () =>
+                git_api.cancelGitOperation(operationId: operationId!),
+            icon: const Icon(Icons.stop_circle_outlined),
+            label: Text(strings.cancel),
+          ),
+        TextButton(
+          onPressed: operationId == null ? () => Navigator.pop(context) : null,
+          child: Text(strings.close),
         ),
       ],
     );

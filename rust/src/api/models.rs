@@ -147,6 +147,89 @@ pub struct GitCapabilities {
     pub supports_repository_setup: bool,
     pub supports_fixed_value_config: bool,
     pub supports_sparse_checkout: bool,
+    pub supports_subtree: bool,
+    pub subtree_diagnostic: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SubmoduleState {
+    Uninitialized,
+    Clean,
+    CheckedOutDifferent,
+    Modified,
+    Untracked,
+    Conflicted,
+    Missing,
+}
+
+#[derive(Clone, Debug)]
+pub struct SubmoduleInfo {
+    pub name: String,
+    pub path: String,
+    pub url: Option<String>,
+    pub branch: Option<String>,
+    pub index_oid: Option<String>,
+    pub head_oid: Option<String>,
+    pub state: SubmoduleState,
+    pub depth: u32,
+}
+
+#[derive(Clone, Debug)]
+pub struct SubmodulePage {
+    pub submodules: Vec<SubmoduleInfo>,
+    pub next_cursor: Option<String>,
+    pub total_submodules: u32,
+}
+
+#[derive(Clone, Debug)]
+pub struct SubmoduleAddOptions {
+    pub url: String,
+    pub path: String,
+    pub name: Option<String>,
+    pub branch: Option<String>,
+    pub depth: Option<u32>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SubmoduleUpdateMode {
+    Recorded,
+    Remote,
+}
+
+#[derive(Clone, Debug)]
+pub struct SubmoduleRemovePreview {
+    pub name: String,
+    pub path: String,
+    pub affected_paths: Vec<String>,
+    pub module_cache_path: Option<String>,
+    pub fingerprint: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SubtreeAction {
+    Add,
+    Pull,
+    Push,
+    Split,
+}
+
+#[derive(Clone, Debug)]
+pub struct SubtreeInfo {
+    pub id: String,
+    pub prefix: String,
+    pub repository: String,
+    pub reference: String,
+    pub squash: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct SubtreeOperationOptions {
+    pub action: SubtreeAction,
+    pub prefix: String,
+    pub repository: Option<String>,
+    pub reference: Option<String>,
+    pub squash: bool,
+    pub branch: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -407,14 +490,17 @@ pub enum OperationPhase {
     Progress,
     Completed,
     Failed,
+    Cancelled,
 }
 
 #[derive(Clone, Debug)]
 pub struct OperationEvent {
+    pub operation_id: String,
     pub operation: String,
     pub phase: OperationPhase,
     pub message: String,
     pub progress: Option<f64>,
+    pub result: Option<OperationResult>,
 }
 
 #[derive(Clone, Debug)]

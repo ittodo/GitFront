@@ -6,8 +6,8 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `GitError`, `OperationEvent`, `OperationPhase`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
+// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `GitError`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
 
 class BranchInfo {
   final String name;
@@ -753,12 +753,16 @@ class GitCapabilities {
   final bool supportsRepositorySetup;
   final bool supportsFixedValueConfig;
   final bool supportsSparseCheckout;
+  final bool supportsSubtree;
+  final String? subtreeDiagnostic;
 
   const GitCapabilities({
     required this.version,
     required this.supportsRepositorySetup,
     required this.supportsFixedValueConfig,
     required this.supportsSparseCheckout,
+    required this.supportsSubtree,
+    this.subtreeDiagnostic,
   });
 
   @override
@@ -766,7 +770,9 @@ class GitCapabilities {
       version.hashCode ^
       supportsRepositorySetup.hashCode ^
       supportsFixedValueConfig.hashCode ^
-      supportsSparseCheckout.hashCode;
+      supportsSparseCheckout.hashCode ^
+      supportsSubtree.hashCode ^
+      subtreeDiagnostic.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -776,7 +782,9 @@ class GitCapabilities {
           version == other.version &&
           supportsRepositorySetup == other.supportsRepositorySetup &&
           supportsFixedValueConfig == other.supportsFixedValueConfig &&
-          supportsSparseCheckout == other.supportsSparseCheckout;
+          supportsSparseCheckout == other.supportsSparseCheckout &&
+          supportsSubtree == other.supportsSubtree &&
+          subtreeDiagnostic == other.subtreeDiagnostic;
 }
 
 class GitConfigEntry {
@@ -857,6 +865,47 @@ class GraphLane {
 }
 
 enum MergeControl { continue_, abort }
+
+class OperationEvent {
+  final String operationId;
+  final String operation;
+  final OperationPhase phase;
+  final String message;
+  final double? progress;
+  final OperationResult? result;
+
+  const OperationEvent({
+    required this.operationId,
+    required this.operation,
+    required this.phase,
+    required this.message,
+    this.progress,
+    this.result,
+  });
+
+  @override
+  int get hashCode =>
+      operationId.hashCode ^
+      operation.hashCode ^
+      phase.hashCode ^
+      message.hashCode ^
+      progress.hashCode ^
+      result.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is OperationEvent &&
+          runtimeType == other.runtimeType &&
+          operationId == other.operationId &&
+          operation == other.operation &&
+          phase == other.phase &&
+          message == other.message &&
+          progress == other.progress &&
+          result == other.result;
+}
+
+enum OperationPhase { started, progress, completed, failed, cancelled }
 
 class OperationResult {
   final bool success;
@@ -1304,6 +1353,236 @@ class StashEntry {
           index == other.index &&
           message == other.message &&
           oid == other.oid;
+}
+
+class SubmoduleAddOptions {
+  final String url;
+  final String path;
+  final String? name;
+  final String? branch;
+  final int? depth;
+
+  const SubmoduleAddOptions({
+    required this.url,
+    required this.path,
+    this.name,
+    this.branch,
+    this.depth,
+  });
+
+  @override
+  int get hashCode =>
+      url.hashCode ^
+      path.hashCode ^
+      name.hashCode ^
+      branch.hashCode ^
+      depth.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SubmoduleAddOptions &&
+          runtimeType == other.runtimeType &&
+          url == other.url &&
+          path == other.path &&
+          name == other.name &&
+          branch == other.branch &&
+          depth == other.depth;
+}
+
+class SubmoduleInfo {
+  final String name;
+  final String path;
+  final String? url;
+  final String? branch;
+  final String? indexOid;
+  final String? headOid;
+  final SubmoduleState state;
+  final int depth;
+
+  const SubmoduleInfo({
+    required this.name,
+    required this.path,
+    this.url,
+    this.branch,
+    this.indexOid,
+    this.headOid,
+    required this.state,
+    required this.depth,
+  });
+
+  @override
+  int get hashCode =>
+      name.hashCode ^
+      path.hashCode ^
+      url.hashCode ^
+      branch.hashCode ^
+      indexOid.hashCode ^
+      headOid.hashCode ^
+      state.hashCode ^
+      depth.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SubmoduleInfo &&
+          runtimeType == other.runtimeType &&
+          name == other.name &&
+          path == other.path &&
+          url == other.url &&
+          branch == other.branch &&
+          indexOid == other.indexOid &&
+          headOid == other.headOid &&
+          state == other.state &&
+          depth == other.depth;
+}
+
+class SubmodulePage {
+  final List<SubmoduleInfo> submodules;
+  final String? nextCursor;
+  final int totalSubmodules;
+
+  const SubmodulePage({
+    required this.submodules,
+    this.nextCursor,
+    required this.totalSubmodules,
+  });
+
+  @override
+  int get hashCode =>
+      submodules.hashCode ^ nextCursor.hashCode ^ totalSubmodules.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SubmodulePage &&
+          runtimeType == other.runtimeType &&
+          submodules == other.submodules &&
+          nextCursor == other.nextCursor &&
+          totalSubmodules == other.totalSubmodules;
+}
+
+class SubmoduleRemovePreview {
+  final String name;
+  final String path;
+  final List<String> affectedPaths;
+  final String? moduleCachePath;
+  final String fingerprint;
+
+  const SubmoduleRemovePreview({
+    required this.name,
+    required this.path,
+    required this.affectedPaths,
+    this.moduleCachePath,
+    required this.fingerprint,
+  });
+
+  @override
+  int get hashCode =>
+      name.hashCode ^
+      path.hashCode ^
+      affectedPaths.hashCode ^
+      moduleCachePath.hashCode ^
+      fingerprint.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SubmoduleRemovePreview &&
+          runtimeType == other.runtimeType &&
+          name == other.name &&
+          path == other.path &&
+          affectedPaths == other.affectedPaths &&
+          moduleCachePath == other.moduleCachePath &&
+          fingerprint == other.fingerprint;
+}
+
+enum SubmoduleState {
+  uninitialized,
+  clean,
+  checkedOutDifferent,
+  modified,
+  untracked,
+  conflicted,
+  missing,
+}
+
+enum SubmoduleUpdateMode { recorded, remote }
+
+enum SubtreeAction { add, pull, push, split }
+
+class SubtreeInfo {
+  final String id;
+  final String prefix;
+  final String repository;
+  final String reference;
+  final bool squash;
+
+  const SubtreeInfo({
+    required this.id,
+    required this.prefix,
+    required this.repository,
+    required this.reference,
+    required this.squash,
+  });
+
+  @override
+  int get hashCode =>
+      id.hashCode ^
+      prefix.hashCode ^
+      repository.hashCode ^
+      reference.hashCode ^
+      squash.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SubtreeInfo &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          prefix == other.prefix &&
+          repository == other.repository &&
+          reference == other.reference &&
+          squash == other.squash;
+}
+
+class SubtreeOperationOptions {
+  final SubtreeAction action;
+  final String prefix;
+  final String? repository;
+  final String? reference;
+  final bool squash;
+  final String? branch;
+
+  const SubtreeOperationOptions({
+    required this.action,
+    required this.prefix,
+    this.repository,
+    this.reference,
+    required this.squash,
+    this.branch,
+  });
+
+  @override
+  int get hashCode =>
+      action.hashCode ^
+      prefix.hashCode ^
+      repository.hashCode ^
+      reference.hashCode ^
+      squash.hashCode ^
+      branch.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SubtreeOperationOptions &&
+          runtimeType == other.runtimeType &&
+          action == other.action &&
+          prefix == other.prefix &&
+          repository == other.repository &&
+          reference == other.reference &&
+          squash == other.squash &&
+          branch == other.branch;
 }
 
 enum UpdateState { disabled, notInstalled, upToDate, available, downloaded }

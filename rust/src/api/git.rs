@@ -11,7 +11,7 @@ use regex::Regex;
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::io::Write;
+use std::io::{BufRead, BufReader, Write};
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 use std::path::{Component, Path, PathBuf};
@@ -37,6 +37,12 @@ static CHANGE_CACHES: Lazy<Mutex<HashMap<String, ChangeCache>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 static BRANCH_CACHES: Lazy<Mutex<HashMap<String, BranchCache>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
+static SUBMODULE_CACHES: Lazy<Mutex<HashMap<String, SubmoduleCache>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+static ACTIVE_GIT_OPERATIONS: Lazy<Mutex<HashMap<String, u32>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+static CANCELLED_GIT_OPERATIONS: Lazy<Mutex<HashSet<String>>> =
+    Lazy::new(|| Mutex::new(HashSet::new()));
 static CREDENTIAL_URL: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)(https?://)([^/@\s:]+):([^/@\s]+)@").expect("valid credential regex")
 });
@@ -76,6 +82,12 @@ struct BranchCache {
     branches: Vec<BranchInfo>,
 }
 
+#[derive(Debug)]
+struct SubmoduleCache {
+    fingerprint: String,
+    submodules: Vec<SubmoduleInfo>,
+}
+
 pub fn git_version() -> Result<String, String> {
     let mut command = Command::new("git");
     hide_console_window(&mut command);
@@ -112,11 +124,22 @@ pub fn git_capabilities() -> Result<GitCapabilities, String> {
     let major = numbers.first().copied().unwrap_or_default();
     let minor = numbers.get(1).copied().unwrap_or_default();
     let at_least = |required_minor| major > 2 || (major == 2 && minor >= required_minor);
+    let subtree = run_subtree_capture(None, vec!["-h".to_owned()]);
+    let (supports_subtree, subtree_diagnostic) = match subtree {
+        Ok(output) if output.status.success() || output.status.code() == Some(129) => (true, None),
+        Ok(output) => {
+            let detail = [output.stdout, output.stderr].concat();
+            (false, Some(redact(String::from_utf8_lossy(&detail).trim())))
+        }
+        Err(error) => (false, Some(error)),
+    };
     Ok(GitCapabilities {
         version,
         supports_repository_setup: at_least(28),
         supports_fixed_value_config: at_least(31),
         supports_sparse_checkout: at_least(25),
+        supports_subtree,
+        subtree_diagnostic,
     })
 }
 
@@ -2244,6 +2267,315 @@ pub fn disable_sparse_checkout(path: String) -> Result<OperationResult, String> 
     )
 }
 
+pub fn list_submodules(path: String, recursive: bool, limit: u32) -> Result<SubmodulePage, String> {
+    let repo = Repository::discover(&path).map_err(format_git_error)?;
+    let key = repository_cache_key(&repo)?;
+    let fingerprint = submodule_fingerprint(&repo)?;
+    let submodules = collect_submodules(&path, &repo, recursive)?;
+    let mut caches = SUBMODULE_CACHES.lock();
+    caches.insert(
+        key.clone(),
+        SubmoduleCache {
+            fingerprint: fingerprint.clone(),
+            submodules,
+        },
+    );
+    if caches.len() > 8
+        && let Some(oldest) = caches.keys().find(|candidate| *candidate != &key).cloned()
+    {
+        caches.remove(&oldest);
+    }
+    Ok(submodule_page(
+        caches.get(&key).expect("submodule cache inserted"),
+        0,
+        limit,
+    ))
+}
+
+pub fn list_submodules_cursor(
+    path: String,
+    cursor: String,
+    limit: u32,
+) -> Result<SubmodulePage, String> {
+    let repo = Repository::discover(&path).map_err(format_git_error)?;
+    let key = repository_cache_key(&repo)?;
+    let (fingerprint, offset) = cursor
+        .rsplit_once(':')
+        .ok_or_else(|| "The submodule cursor is invalid. Refresh the list.".to_owned())?;
+    let offset = offset
+        .parse::<usize>()
+        .map_err(|_| "The submodule cursor is invalid. Refresh the list.".to_owned())?;
+    if submodule_fingerprint(&repo)? != fingerprint {
+        return Err("Submodule configuration changed. Refresh the list.".to_owned());
+    }
+    let caches = SUBMODULE_CACHES.lock();
+    let cache = caches
+        .get(&key)
+        .filter(|cache| cache.fingerprint == fingerprint)
+        .ok_or_else(|| "The submodule list expired. Refresh it.".to_owned())?;
+    Ok(submodule_page(cache, offset, limit))
+}
+
+pub fn init_submodules(
+    path: String,
+    paths: Vec<String>,
+    recursive: bool,
+) -> Result<OperationResult, String> {
+    submodule_update_command(path, paths, recursive, SubmoduleUpdateMode::Recorded)
+}
+
+pub fn update_submodules(
+    path: String,
+    paths: Vec<String>,
+    recursive: bool,
+    mode: SubmoduleUpdateMode,
+) -> Result<OperationResult, String> {
+    submodule_update_command(path, paths, recursive, mode)
+}
+
+fn submodule_update_command(
+    path: String,
+    paths: Vec<String>,
+    recursive: bool,
+    mode: SubmoduleUpdateMode,
+) -> Result<OperationResult, String> {
+    let repo = Repository::discover(&path).map_err(format_git_error)?;
+    for item in &paths {
+        safe_worktree_path(&repo, item)?;
+    }
+    let mut args = vec![
+        "submodule".to_owned(),
+        "update".to_owned(),
+        "--init".to_owned(),
+    ];
+    if recursive {
+        args.push("--recursive".to_owned());
+    }
+    if mode == SubmoduleUpdateMode::Remote {
+        args.push("--remote".to_owned());
+    }
+    if !paths.is_empty() {
+        args.push("--".to_owned());
+        args.extend(paths);
+    }
+    run_git(&path, args, None, &[])
+}
+
+pub fn sync_submodules(
+    path: String,
+    paths: Vec<String>,
+    recursive: bool,
+) -> Result<OperationResult, String> {
+    let repo = Repository::discover(&path).map_err(format_git_error)?;
+    for item in &paths {
+        safe_worktree_path(&repo, item)?;
+    }
+    let mut args = vec!["submodule".to_owned(), "sync".to_owned()];
+    if recursive {
+        args.push("--recursive".to_owned());
+    }
+    if !paths.is_empty() {
+        args.push("--".to_owned());
+        args.extend(paths);
+    }
+    run_git(&path, args, None, &[])
+}
+
+pub fn add_submodule(
+    path: String,
+    options: SubmoduleAddOptions,
+) -> Result<OperationResult, String> {
+    let repo = Repository::discover(&path).map_err(format_git_error)?;
+    let target = safe_worktree_path(&repo, &options.path)?;
+    if target.exists() {
+        return Err("The submodule path already exists.".to_owned());
+    }
+    if options.url.trim().is_empty() {
+        return Err("A submodule URL is required.".to_owned());
+    }
+    let mut args = vec!["submodule".to_owned(), "add".to_owned()];
+    if let Some(name) = options.name.filter(|value| !value.trim().is_empty()) {
+        validate_config_component(&name)?;
+        args.extend(["--name".to_owned(), name]);
+    }
+    if let Some(branch) = options.branch.filter(|value| !value.trim().is_empty()) {
+        validate_ref_name(&branch)?;
+        args.extend(["--branch".to_owned(), branch]);
+    }
+    if let Some(depth) = options.depth {
+        if depth == 0 {
+            return Err("Submodule depth must be greater than zero.".to_owned());
+        }
+        args.extend(["--depth".to_owned(), depth.to_string()]);
+    }
+    args.extend(["--".to_owned(), options.url, options.path]);
+    run_git(&path, args, None, &[])
+}
+
+pub fn preview_remove_submodule(
+    path: String,
+    submodule_path: String,
+) -> Result<SubmoduleRemovePreview, String> {
+    let repo = Repository::discover(&path).map_err(format_git_error)?;
+    safe_worktree_path(&repo, &submodule_path)?;
+    let item = collect_submodules(&path, &repo, false)?
+        .into_iter()
+        .find(|item| item.path == submodule_path)
+        .ok_or_else(|| "The submodule is not registered in this repository.".to_owned())?;
+    if matches!(
+        item.state,
+        SubmoduleState::Modified | SubmoduleState::Untracked | SubmoduleState::Conflicted
+    ) {
+        return Err(
+            "The submodule has local changes. Clean or commit them before removal.".to_owned(),
+        );
+    }
+    let cache = repo.path().join("modules").join(&item.name);
+    let fingerprint = submodule_remove_fingerprint(&repo, &item)?;
+    Ok(SubmoduleRemovePreview {
+        name: item.name,
+        path: item.path.clone(),
+        affected_paths: vec![".gitmodules".to_owned(), item.path],
+        module_cache_path: cache.exists().then(|| display_path(cache)),
+        fingerprint,
+    })
+}
+
+pub fn remove_submodule(
+    path: String,
+    submodule_path: String,
+    expected_fingerprint: String,
+    confirmation: String,
+) -> Result<OperationResult, String> {
+    if confirmation != submodule_path {
+        return Err("The confirmation must exactly match the submodule path.".to_owned());
+    }
+    let preview = preview_remove_submodule(path.clone(), submodule_path.clone())?;
+    let repo = Repository::discover(&path).map_err(format_git_error)?;
+    let item = collect_submodules(&path, &repo, false)?
+        .into_iter()
+        .find(|item| item.path == submodule_path)
+        .ok_or_else(|| "The submodule is no longer registered.".to_owned())?;
+    if preview.fingerprint != expected_fingerprint
+        || submodule_remove_fingerprint(&repo, &item)? != expected_fingerprint
+    {
+        return Err("The submodule changed after the preview. Review it again.".to_owned());
+    }
+    let mut result = run_git(
+        &path,
+        vec![
+            "submodule".to_owned(),
+            "deinit".to_owned(),
+            "-f".to_owned(),
+            "--".to_owned(),
+            submodule_path.clone(),
+        ],
+        None,
+        &[],
+    )?;
+    if !result.success {
+        return Ok(result);
+    }
+    let removed = run_git(
+        &path,
+        vec![
+            "rm".to_owned(),
+            "-f".to_owned(),
+            "--".to_owned(),
+            submodule_path,
+        ],
+        None,
+        &[],
+    )?;
+    append_operation(&mut result, &removed);
+    if result.success
+        && let Some(cache) = preview.module_cache_path
+    {
+        let cache = PathBuf::from(cache);
+        if cache.exists() {
+            trash::delete(&cache).map_err(|error| {
+                format!("Could not move the submodule cache to the Recycle Bin: {error}")
+            })?;
+            result
+                .stdout
+                .push_str("\nMoved the submodule cache to the Recycle Bin.");
+        }
+    }
+    Ok(result)
+}
+
+pub fn list_subtrees(path: String) -> Result<Vec<SubtreeInfo>, String> {
+    let output = run_git_capture(
+        &path,
+        vec![
+            "config".to_owned(),
+            "--local".to_owned(),
+            "--get-regexp".to_owned(),
+            "^gitfront\\.subtree\\.".to_owned(),
+        ],
+        &[],
+    )?;
+    if !output.status.success() && output.status.code() != Some(1) {
+        return Err(redact(String::from_utf8_lossy(&output.stderr).trim()));
+    }
+    let mut values: HashMap<String, HashMap<String, String>> = HashMap::new();
+    for line in String::from_utf8_lossy(&output.stdout).lines() {
+        let Some((key, value)) = line.split_once(char::is_whitespace) else {
+            continue;
+        };
+        let Some(rest) = key.strip_prefix("gitfront.subtree.") else {
+            continue;
+        };
+        let Some((id, field)) = rest.rsplit_once('.') else {
+            continue;
+        };
+        values
+            .entry(id.to_owned())
+            .or_default()
+            .insert(field.to_owned(), value.trim().to_owned());
+    }
+    let mut result = values
+        .into_iter()
+        .filter_map(|(id, values)| {
+            Some(SubtreeInfo {
+                id,
+                prefix: values.get("prefix")?.to_owned(),
+                repository: values.get("repository")?.to_owned(),
+                reference: values.get("reference")?.to_owned(),
+                squash: values.get("squash").is_none_or(|value| value != "false"),
+            })
+        })
+        .collect::<Vec<_>>();
+    result.sort_by_cached_key(|item| item.prefix.to_lowercase());
+    Ok(result)
+}
+
+pub fn register_subtree(path: String, subtree: SubtreeInfo) -> Result<OperationResult, String> {
+    validate_config_component(&subtree.id)?;
+    validate_subtree_values(
+        &path,
+        &subtree.prefix,
+        &subtree.repository,
+        &subtree.reference,
+    )?;
+    write_subtree_registry(&path, &subtree)
+}
+
+pub fn forget_subtree(path: String, id: String) -> Result<OperationResult, String> {
+    validate_config_component(&id)?;
+    run_git(
+        &path,
+        vec![
+            "config".to_owned(),
+            "--local".to_owned(),
+            "--remove-section".to_owned(),
+            format!("gitfront.subtree.{id}"),
+        ],
+        None,
+        &[],
+    )
+}
+
 pub fn create_branch(
     path: String,
     name: String,
@@ -2757,6 +3089,515 @@ pub fn open_external_file(
     Ok(result_from_output("open external editor", output))
 }
 
+fn repository_cache_key(repo: &Repository) -> Result<String, String> {
+    let workdir = repo
+        .workdir()
+        .ok_or_else(|| "Bare repositories are not supported.".to_owned())?;
+    Ok(display_path(
+        workdir
+            .canonicalize()
+            .unwrap_or_else(|_| workdir.to_path_buf()),
+    ))
+}
+
+fn submodule_fingerprint(repo: &Repository) -> Result<String, String> {
+    let mut digest = Sha256::new();
+    digest.update(
+        repo.head()
+            .ok()
+            .and_then(|head| head.target())
+            .map(|oid| oid.to_string())
+            .unwrap_or_default(),
+    );
+    let index = repo.index().map_err(format_git_error)?;
+    for entry in index.iter() {
+        digest.update(entry.mode.to_le_bytes());
+        digest.update(entry.id.as_bytes());
+        digest.update(&entry.path);
+    }
+    if let Some(workdir) = repo.workdir() {
+        digest.update(fs::read(workdir.join(".gitmodules")).unwrap_or_default());
+    }
+    Ok(format!("{:x}", digest.finalize()))
+}
+
+fn submodule_page(cache: &SubmoduleCache, offset: usize, limit: u32) -> SubmodulePage {
+    let end = offset
+        .saturating_add(limit.clamp(1, 500) as usize)
+        .min(cache.submodules.len());
+    SubmodulePage {
+        submodules: cache
+            .submodules
+            .get(offset..end)
+            .unwrap_or_default()
+            .to_vec(),
+        next_cursor: (end < cache.submodules.len()).then(|| format!("{}:{end}", cache.fingerprint)),
+        total_submodules: cache.submodules.len().min(u32::MAX as usize) as u32,
+    }
+}
+
+fn collect_submodules(
+    path: &str,
+    repo: &Repository,
+    recursive: bool,
+) -> Result<Vec<SubmoduleInfo>, String> {
+    let mut config_by_path: HashMap<String, (String, Option<String>, Option<String>)> =
+        HashMap::new();
+    let config = run_git_capture(
+        path,
+        vec![
+            "config".to_owned(),
+            "-f".to_owned(),
+            ".gitmodules".to_owned(),
+            "--get-regexp".to_owned(),
+            "^submodule\\..*\\.(path|url|branch)$".to_owned(),
+        ],
+        &[],
+    )?;
+    let mut config_fields: HashMap<String, HashMap<String, String>> = HashMap::new();
+    if config.status.success() {
+        for line in String::from_utf8_lossy(&config.stdout).lines() {
+            let Some((key, value)) = line.split_once(char::is_whitespace) else {
+                continue;
+            };
+            let Some(rest) = key.strip_prefix("submodule.") else {
+                continue;
+            };
+            let Some((name, field)) = rest.rsplit_once('.') else {
+                continue;
+            };
+            config_fields
+                .entry(name.to_owned())
+                .or_default()
+                .insert(field.to_owned(), value.trim().to_owned());
+        }
+    }
+    for (name, fields) in config_fields {
+        if let Some(module_path) = fields.get("path") {
+            config_by_path.insert(
+                module_path.replace('\\', "/"),
+                (
+                    name,
+                    fields.get("url").map(|value| redact(value)),
+                    fields.get("branch").cloned(),
+                ),
+            );
+        }
+    }
+    let index_oids = repo
+        .index()
+        .map_err(format_git_error)?
+        .iter()
+        .filter(|entry| entry.mode == 0o160000)
+        .map(|entry| {
+            (
+                String::from_utf8_lossy(&entry.path).replace('\\', "/"),
+                entry.id.to_string(),
+            )
+        })
+        .collect::<HashMap<_, _>>();
+    let status = run_git_capture(
+        path,
+        vec![
+            "status".to_owned(),
+            "--porcelain=v2".to_owned(),
+            "-z".to_owned(),
+            "--ignore-submodules=none".to_owned(),
+            "--untracked-files=no".to_owned(),
+        ],
+        &[],
+    )?;
+    let mut dirty: HashMap<String, SubmoduleState> = HashMap::new();
+    for record in status
+        .stdout
+        .split(|byte| *byte == 0)
+        .filter(|record| !record.is_empty())
+    {
+        let record = String::from_utf8_lossy(record);
+        let fields = record.splitn(9, ' ').collect::<Vec<_>>();
+        if fields.first() == Some(&"1") && fields.len() == 9 && fields[2].starts_with('S') {
+            let sub = fields[2].as_bytes();
+            let state = if fields[1].contains('U') {
+                SubmoduleState::Conflicted
+            } else if sub.get(3) == Some(&b'U') {
+                SubmoduleState::Untracked
+            } else if sub.get(2) == Some(&b'M') {
+                SubmoduleState::Modified
+            } else if sub.get(1) == Some(&b'C') {
+                SubmoduleState::CheckedOutDifferent
+            } else {
+                continue;
+            };
+            dirty.insert(fields[8].replace('\\', "/"), state);
+        }
+    }
+    let mut args = vec!["submodule".to_owned(), "status".to_owned()];
+    if recursive {
+        args.push("--recursive".to_owned());
+    }
+    let output = run_git_capture(path, args, &[])?;
+    if !output.status.success() {
+        if !repo
+            .workdir()
+            .is_some_and(|workdir| workdir.join(".gitmodules").exists())
+        {
+            return Ok(Vec::new());
+        }
+        return Err(redact(String::from_utf8_lossy(&output.stderr).trim()));
+    }
+    let mut result = Vec::new();
+    let mut seen = HashSet::new();
+    for line in String::from_utf8_lossy(&output.stdout).lines() {
+        if line.len() < 42 {
+            continue;
+        }
+        let marker = line.as_bytes()[0] as char;
+        let oid = line[1..41].to_owned();
+        let remainder = line[42..].trim();
+        let module_path = remainder
+            .rsplit_once(" (")
+            .map_or(remainder, |value| value.0)
+            .replace('\\', "/");
+        seen.insert(module_path.clone());
+        let (name, url, branch) = config_by_path
+            .get(&module_path)
+            .cloned()
+            .unwrap_or_else(|| (module_path.clone(), None, None));
+        let state = dirty.get(&module_path).cloned().unwrap_or(match marker {
+            '-' => SubmoduleState::Uninitialized,
+            '+' => SubmoduleState::CheckedOutDifferent,
+            'U' => SubmoduleState::Conflicted,
+            _ => SubmoduleState::Clean,
+        });
+        result.push(SubmoduleInfo {
+            name,
+            path: module_path.clone(),
+            url,
+            branch,
+            index_oid: index_oids.get(&module_path).cloned(),
+            head_oid: (marker != '-').then_some(oid),
+            state,
+            depth: module_path.matches('/').count() as u32,
+        });
+    }
+    for (module_path, (name, url, branch)) in config_by_path {
+        if seen.contains(&module_path) {
+            continue;
+        }
+        result.push(SubmoduleInfo {
+            name,
+            path: module_path.clone(),
+            url,
+            branch,
+            index_oid: index_oids.get(&module_path).cloned(),
+            head_oid: None,
+            state: SubmoduleState::Missing,
+            depth: module_path.matches('/').count() as u32,
+        });
+    }
+    result.sort_by_cached_key(|item| item.path.to_lowercase());
+    Ok(result)
+}
+
+fn submodule_remove_fingerprint(repo: &Repository, item: &SubmoduleInfo) -> Result<String, String> {
+    let mut digest = Sha256::new();
+    digest.update(submodule_fingerprint(repo)?);
+    digest.update(item.name.as_bytes());
+    digest.update(item.path.as_bytes());
+    digest.update(item.index_oid.as_deref().unwrap_or_default().as_bytes());
+    digest.update(item.head_oid.as_deref().unwrap_or_default().as_bytes());
+    digest.update(format!("{:?}", item.state));
+    Ok(format!("{:x}", digest.finalize()))
+}
+
+fn validate_config_component(value: &str) -> Result<(), String> {
+    if value.is_empty()
+        || !value
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_'))
+    {
+        return Err("The identifier may contain only letters, numbers, '-' and '_'.".to_owned());
+    }
+    Ok(())
+}
+
+fn validate_subtree_values(
+    path: &str,
+    prefix: &str,
+    repository: &str,
+    reference: &str,
+) -> Result<(), String> {
+    let repo = Repository::discover(path).map_err(format_git_error)?;
+    if prefix.trim().is_empty() || repository.trim().is_empty() || reference.trim().is_empty() {
+        return Err("Subtree prefix, repository and ref are required.".to_owned());
+    }
+    safe_worktree_path(&repo, prefix)?;
+    validate_ref_name(reference)
+}
+
+fn write_subtree_registry(path: &str, subtree: &SubtreeInfo) -> Result<OperationResult, String> {
+    let canonical = Repository::discover(path)
+        .map_err(format_git_error)
+        .and_then(|repo| repository_cache_key(&repo))?;
+    let lock = {
+        let mut locks = REPOSITORY_LOCKS.lock();
+        locks
+            .entry(canonical)
+            .or_insert_with(|| Arc::new(Mutex::new(())))
+            .clone()
+    };
+    let _guard = lock.lock();
+    write_subtree_registry_unlocked(path, subtree)
+}
+
+fn write_subtree_registry_unlocked(
+    path: &str,
+    subtree: &SubtreeInfo,
+) -> Result<OperationResult, String> {
+    let section = format!("gitfront.subtree.{}", subtree.id);
+    let mut combined = OperationResult {
+        success: true,
+        exit_code: 0,
+        summary: "Saved subtree registration.".to_owned(),
+        stdout: String::new(),
+        stderr: String::new(),
+    };
+    for (field, value) in [
+        ("prefix", subtree.prefix.clone()),
+        ("repository", subtree.repository.clone()),
+        ("reference", subtree.reference.clone()),
+        ("squash", subtree.squash.to_string()),
+    ] {
+        let output = run_git_capture(
+            path,
+            vec![
+                "config".to_owned(),
+                "--local".to_owned(),
+                format!("{section}.{field}"),
+                value,
+            ],
+            &[],
+        )?;
+        let result = result_from_output("save subtree registration", output);
+        append_operation(&mut combined, &result);
+        if !combined.success {
+            break;
+        }
+    }
+    Ok(combined)
+}
+
+pub fn run_subtree_operation(
+    path: String,
+    operation_id: String,
+    options: SubtreeOperationOptions,
+    sink: StreamSink<OperationEvent>,
+) -> Result<(), String> {
+    validate_config_component(&operation_id)?;
+    let repo = Repository::discover(&path).map_err(format_git_error)?;
+    let repository = options.repository.clone().unwrap_or_default();
+    let reference = options.reference.clone().unwrap_or_default();
+    if options.action == SubtreeAction::Split {
+        let repo = Repository::discover(&path).map_err(format_git_error)?;
+        if options.prefix.trim().is_empty() {
+            return Err("A subtree prefix is required.".to_owned());
+        }
+        safe_worktree_path(&repo, &options.prefix)?;
+    } else {
+        validate_subtree_values(&path, &options.prefix, &repository, &reference)?;
+    }
+    if matches!(options.action, SubtreeAction::Add | SubtreeAction::Pull)
+        && collect_status(&repo)?.iter().any(|file| {
+            !file.untracked
+                && (file.staged != ChangeKind::None || file.unstaged != ChangeKind::None)
+        })
+    {
+        return Err(
+            "Commit or discard tracked changes before running subtree add or pull.".to_owned(),
+        );
+    }
+    let action = match options.action {
+        SubtreeAction::Add => "add",
+        SubtreeAction::Pull => "pull",
+        SubtreeAction::Push => "push",
+        SubtreeAction::Split => "split",
+    };
+    let mut args = vec![
+        "subtree".to_owned(),
+        action.to_owned(),
+        "--prefix".to_owned(),
+        options.prefix.clone(),
+    ];
+    match options.action {
+        SubtreeAction::Add | SubtreeAction::Pull | SubtreeAction::Push => {
+            args.extend([repository.clone(), reference.clone()]);
+            if options.squash && options.action != SubtreeAction::Push {
+                args.push("--squash".to_owned());
+            }
+        }
+        SubtreeAction::Split => {
+            if let Some(branch) = options
+                .branch
+                .as_ref()
+                .filter(|value| !value.trim().is_empty())
+            {
+                validate_branch_name(branch)?;
+                args.extend(["--branch".to_owned(), branch.to_owned()]);
+            }
+        }
+    }
+    let canonical = repository_cache_key(&repo)?;
+    let lock = {
+        let mut locks = REPOSITORY_LOCKS.lock();
+        locks
+            .entry(canonical)
+            .or_insert_with(|| Arc::new(Mutex::new(())))
+            .clone()
+    };
+    let _guard = lock.lock();
+    let _ = sink.add(OperationEvent {
+        operation_id: operation_id.clone(),
+        operation: format!("subtree {action}"),
+        phase: OperationPhase::Started,
+        message: format!("Subtree {action} started."),
+        progress: None,
+        result: None,
+    });
+    let mut command = Command::new("git");
+    hide_console_window(&mut command);
+    configure_subtree_environment(&mut command);
+    command
+        .arg("-C")
+        .arg(&path)
+        .args(args)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = command
+        .spawn()
+        .map_err(|error| format!("Git could not be started: {error}"))?;
+    let pid = child.id();
+    ACTIVE_GIT_OPERATIONS
+        .lock()
+        .insert(operation_id.clone(), pid);
+    let (sender, receiver) = mpsc::channel::<(bool, String)>();
+    if let Some(stream) = child.stdout.take() {
+        let sender = sender.clone();
+        thread::spawn(move || {
+            for line in BufReader::new(stream).lines().map_while(Result::ok) {
+                let _ = sender.send((false, line));
+            }
+        });
+    }
+    if let Some(stream) = child.stderr.take() {
+        let sender = sender.clone();
+        thread::spawn(move || {
+            for line in BufReader::new(stream).lines().map_while(Result::ok) {
+                let _ = sender.send((true, line));
+            }
+        });
+    }
+    drop(sender);
+    let mut stdout = String::new();
+    let mut stderr = String::new();
+    let percent = Regex::new(r"(?P<value>\d{1,3})%").expect("valid progress regex");
+    let status = loop {
+        while let Ok((is_error, line)) = receiver.try_recv() {
+            let clean = redact(&line);
+            let progress = percent
+                .captures(&clean)
+                .and_then(|capture| capture.name("value"))
+                .and_then(|value| value.as_str().parse::<f64>().ok())
+                .map(|value| (value / 100.0).clamp(0.0, 1.0));
+            let destination = if is_error { &mut stderr } else { &mut stdout };
+            destination.push_str(&clean);
+            destination.push('\n');
+            let _ = sink.add(OperationEvent {
+                operation_id: operation_id.clone(),
+                operation: format!("subtree {action}"),
+                phase: OperationPhase::Progress,
+                message: clean,
+                progress,
+                result: None,
+            });
+        }
+        if let Some(status) = child.try_wait().map_err(|error| error.to_string())? {
+            break status;
+        }
+        thread::sleep(Duration::from_millis(40));
+    };
+    for (is_error, line) in receiver.try_iter() {
+        let destination = if is_error { &mut stderr } else { &mut stdout };
+        destination.push_str(&redact(&line));
+        destination.push('\n');
+    }
+    ACTIVE_GIT_OPERATIONS.lock().remove(&operation_id);
+    let cancelled = CANCELLED_GIT_OPERATIONS.lock().remove(&operation_id);
+    let mut result = OperationResult {
+        success: status.success(),
+        exit_code: status.code().unwrap_or(-1),
+        summary: if status.success() {
+            format!("Subtree {action} completed.")
+        } else {
+            format!("Subtree {action} failed.")
+        },
+        stdout,
+        stderr,
+    };
+    if result.success && matches!(options.action, SubtreeAction::Add | SubtreeAction::Pull) {
+        let id = format!("{:x}", Sha256::digest(options.prefix.as_bytes()))[..12].to_owned();
+        let registration = SubtreeInfo {
+            id,
+            prefix: options.prefix,
+            repository,
+            reference,
+            squash: options.squash,
+        };
+        let saved = write_subtree_registry_unlocked(&path, &registration)?;
+        append_operation(&mut result, &saved);
+    }
+    let _ = sink.add(OperationEvent {
+        operation_id,
+        operation: format!("subtree {action}"),
+        phase: if cancelled {
+            OperationPhase::Cancelled
+        } else if result.success {
+            OperationPhase::Completed
+        } else {
+            OperationPhase::Failed
+        },
+        message: result.summary.clone(),
+        progress: result.success.then_some(1.0),
+        result: Some(result),
+    });
+    Ok(())
+}
+
+pub fn cancel_git_operation(operation_id: String) -> Result<OperationResult, String> {
+    let pid = ACTIVE_GIT_OPERATIONS
+        .lock()
+        .get(&operation_id)
+        .copied()
+        .ok_or_else(|| "The Git operation is no longer running.".to_owned())?;
+    #[cfg(windows)]
+    {
+        let mut command = Command::new("taskkill.exe");
+        hide_console_window(&mut command);
+        let output = command
+            .args(["/PID", &pid.to_string(), "/T", "/F"])
+            .output()
+            .map_err(|error| format!("Could not cancel Git: {error}"))?;
+        if output.status.success() {
+            CANCELLED_GIT_OPERATIONS.lock().insert(operation_id);
+        }
+        Ok(result_from_output("cancel Git operation", output))
+    }
+    #[cfg(not(windows))]
+    Err(format!(
+        "Cancelling process {pid} is not supported on this platform."
+    ))
+}
+
 fn run_git(
     path: &str,
     args: Vec<String>,
@@ -2791,6 +3632,11 @@ fn run_git_without_repo_named(
     operation: &str,
     args: Vec<String>,
 ) -> Result<OperationResult, String> {
+    let output = run_git_without_repo_raw(args)?;
+    Ok(result_from_output(operation, output))
+}
+
+fn run_git_without_repo_raw(args: Vec<String>) -> Result<std::process::Output, String> {
     let mut command = Command::new("git");
     hide_console_window(&mut command);
     command
@@ -2801,7 +3647,45 @@ fn run_git_without_repo_named(
     let output = command
         .output()
         .map_err(|error| format!("Git could not be started: {error}"))?;
-    Ok(result_from_output(operation, output))
+    Ok(output)
+}
+
+fn run_subtree_capture(
+    path: Option<&str>,
+    arguments: Vec<String>,
+) -> Result<std::process::Output, String> {
+    let mut command = Command::new("git");
+    hide_console_window(&mut command);
+    if let Some(path) = path {
+        command.arg("-C").arg(path);
+    }
+    configure_subtree_environment(&mut command);
+    command
+        .arg("subtree")
+        .args(arguments)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|error| format!("Git subtree could not be started: {error}"))
+}
+
+fn configure_subtree_environment(command: &mut Command) {
+    let mut probe = Command::new("git");
+    hide_console_window(&mut probe);
+    if let Ok(output) = probe.arg("--exec-path").output()
+        && output.status.success()
+    {
+        let exec_path = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+        if !exec_path.is_empty() {
+            let current = std::env::var_os("PATH").unwrap_or_default();
+            let mut paths = vec![PathBuf::from(&exec_path)];
+            paths.extend(std::env::split_paths(&current));
+            if let Ok(joined) = std::env::join_paths(paths) {
+                command.env("PATH", joined).env("GIT_EXEC_PATH", exec_path);
+            }
+        }
+    }
 }
 
 fn run_config_mutation(

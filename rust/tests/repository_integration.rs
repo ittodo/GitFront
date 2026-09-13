@@ -5,16 +5,18 @@ use rust_lib_gitfront_preview::api::git::{
     create_commit, create_commit_with_options, create_tag, create_tracking_branch,
     disable_sparse_checkout, fetch_all, get_worktree_diff, initialize_repository, intent_to_add,
     list_branches_cursor, list_changes_cursor, list_commits, list_commits_cursor,
-    list_remote_details, load_commit_defaults, load_conflict, merge_branch, open_repository,
+    list_remote_details, list_submodules, list_submodules_cursor, list_subtrees,
+    load_commit_defaults, load_conflict, merge_branch, open_repository, preview_remove_submodule,
     preview_reset, push_current, push_current_to, read_git_config, read_sparse_checkout,
-    refresh_repository_paged, refresh_working_tree, remove_remote, rename_remote, reset_to_commit,
-    revert_commit, set_git_config, set_sparse_checkout, stage_paths, stash_apply, stash_save,
-    switch_branch, unset_git_config_value, update_remote,
+    refresh_repository_paged, refresh_working_tree, register_subtree, remove_remote,
+    remove_submodule, rename_remote, reset_to_commit, revert_commit, set_git_config,
+    set_sparse_checkout, stage_paths, stash_apply, stash_save, switch_branch,
+    unset_git_config_value, update_remote,
 };
 use rust_lib_gitfront_preview::api::models::{
     ChangeKind, CherryPickApplicability, CloneOptions, CommitOptions, CommitReferenceKind,
     CommitSigningMode, GitConfigScope, GitignoreTemplate, MergeControl, RepositoryInitOptions,
-    RepositoryState, ResetMode, SequenceControl,
+    RepositoryState, ResetMode, SequenceControl, SubmoduleState, SubtreeInfo,
 };
 use std::fs;
 use std::io::Write;
@@ -931,6 +933,93 @@ fn branch_pages_transfer_only_the_requested_slice() {
     .expect("second branch page");
     assert_eq!(second.branches.len(), 11);
     assert_eq!(second.total_branches, 261);
+}
+
+#[test]
+fn lists_pages_and_safely_removes_submodules() {
+    let child = repository();
+    let parent = repository();
+    let child_path = child.path().to_string_lossy().into_owned();
+    git(
+        parent.path(),
+        &[
+            "-c",
+            "protocol.file.allow=always",
+            "submodule",
+            "add",
+            &child_path,
+            "vendor/library",
+        ],
+    );
+    git(
+        parent.path(),
+        &[
+            "-c",
+            "protocol.file.allow=always",
+            "submodule",
+            "add",
+            &child_path,
+            "vendor/second",
+        ],
+    );
+    let parent_path = parent.path().to_string_lossy().into_owned();
+    let first = list_submodules(parent_path.clone(), true, 1).expect("submodule page");
+    assert_eq!(first.total_submodules, 2);
+    let second = list_submodules_cursor(
+        parent_path.clone(),
+        first.next_cursor.expect("submodule cursor"),
+        1,
+    )
+    .expect("second submodule page");
+    assert_eq!(second.submodules.len(), 1);
+    assert!(second.next_cursor.is_none());
+    assert_eq!(first.submodules[0].path, "vendor/library");
+    assert_eq!(first.submodules[0].state, SubmoduleState::Clean);
+
+    fs::write(
+        parent.path().join("vendor/library/local.txt"),
+        "untracked\n",
+    )
+    .expect("dirty submodule fixture");
+    assert!(
+        preview_remove_submodule(parent_path.clone(), "vendor/library".to_owned()).is_err(),
+        "dirty submodules must not be removed"
+    );
+    fs::remove_file(parent.path().join("vendor/library/local.txt")).expect("clean fixture");
+    let preview = preview_remove_submodule(parent_path.clone(), "vendor/library".to_owned())
+        .expect("remove preview");
+    let removed = remove_submodule(
+        parent_path,
+        "vendor/library".to_owned(),
+        preview.fingerprint,
+        "vendor/library".to_owned(),
+    )
+    .expect("remove submodule");
+    assert!(removed.success, "{}", removed.stderr);
+    assert!(!parent.path().join("vendor/library").exists());
+}
+
+#[test]
+fn stores_subtree_connections_only_in_local_git_config() {
+    let directory = repository();
+    let path = directory.path().to_string_lossy().into_owned();
+    let saved = register_subtree(
+        path.clone(),
+        SubtreeInfo {
+            id: "vendor_docs".to_owned(),
+            prefix: "vendor/docs".to_owned(),
+            repository: "https://example.invalid/docs.git".to_owned(),
+            reference: "main".to_owned(),
+            squash: true,
+        },
+    )
+    .expect("register subtree");
+    assert!(saved.success, "{}", saved.stderr);
+    let entries = list_subtrees(path).expect("list subtrees");
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].prefix, "vendor/docs");
+    assert!(entries[0].squash);
+    assert!(!directory.path().join(".gitsubtrees").exists());
 }
 
 #[test]

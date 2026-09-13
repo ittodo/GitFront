@@ -1011,6 +1011,13 @@ class GitFrontController extends Notifier<GitFrontState> {
 
   void clearOperationLog() => state = state.copyWith(operationLog: const []);
 
+  void recordOperationEvent(OperationEvent event) {
+    final progress = event.progress == null
+        ? ''
+        : ' ${(event.progress! * 100).round()}%';
+    _appendLog('${event.operation}$progress · ${event.message}');
+  }
+
   void _setError(int index, Object error) {
     if (index < 0 || index >= state.tabs.length) return;
     _updateTab(

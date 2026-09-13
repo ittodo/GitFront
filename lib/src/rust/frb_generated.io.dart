@@ -25,6 +25,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   AnyhowException dco_decode_AnyhowException(dynamic raw);
 
   @protected
+  RustStreamSink<OperationEvent> dco_decode_StreamSink_operation_event_Sse(
+    dynamic raw,
+  );
+
+  @protected
   RustStreamSink<RepositoryWatchEvent>
   dco_decode_StreamSink_repository_watch_event_Sse(dynamic raw);
 
@@ -41,13 +46,30 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   CommitOptions dco_decode_box_autoadd_commit_options(dynamic raw);
 
   @protected
+  double dco_decode_box_autoadd_f_64(dynamic raw);
+
+  @protected
   FileChange dco_decode_box_autoadd_file_change(dynamic raw);
+
+  @protected
+  OperationResult dco_decode_box_autoadd_operation_result(dynamic raw);
 
   @protected
   RebasePlan dco_decode_box_autoadd_rebase_plan(dynamic raw);
 
   @protected
   RepositoryInitOptions dco_decode_box_autoadd_repository_init_options(
+    dynamic raw,
+  );
+
+  @protected
+  SubmoduleAddOptions dco_decode_box_autoadd_submodule_add_options(dynamic raw);
+
+  @protected
+  SubtreeInfo dco_decode_box_autoadd_subtree_info(dynamic raw);
+
+  @protected
+  SubtreeOperationOptions dco_decode_box_autoadd_subtree_operation_options(
     dynamic raw,
   );
 
@@ -125,6 +147,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   ExternalEditor dco_decode_external_editor(dynamic raw);
+
+  @protected
+  double dco_decode_f_64(dynamic raw);
 
   @protected
   FileChange dco_decode_file_change(dynamic raw);
@@ -211,7 +236,19 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<StashEntry> dco_decode_list_stash_entry(dynamic raw);
 
   @protected
+  List<SubmoduleInfo> dco_decode_list_submodule_info(dynamic raw);
+
+  @protected
+  List<SubtreeInfo> dco_decode_list_subtree_info(dynamic raw);
+
+  @protected
   MergeControl dco_decode_merge_control(dynamic raw);
+
+  @protected
+  OperationEvent dco_decode_operation_event(dynamic raw);
+
+  @protected
+  OperationPhase dco_decode_operation_phase(dynamic raw);
 
   @protected
   OperationResult dco_decode_operation_result(dynamic raw);
@@ -220,7 +257,13 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   String? dco_decode_opt_String(dynamic raw);
 
   @protected
+  double? dco_decode_opt_box_autoadd_f_64(dynamic raw);
+
+  @protected
   FileChange? dco_decode_opt_box_autoadd_file_change(dynamic raw);
+
+  @protected
+  OperationResult? dco_decode_opt_box_autoadd_operation_result(dynamic raw);
 
   @protected
   int? dco_decode_opt_box_autoadd_u_32(dynamic raw);
@@ -286,6 +329,33 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   StashEntry dco_decode_stash_entry(dynamic raw);
 
   @protected
+  SubmoduleAddOptions dco_decode_submodule_add_options(dynamic raw);
+
+  @protected
+  SubmoduleInfo dco_decode_submodule_info(dynamic raw);
+
+  @protected
+  SubmodulePage dco_decode_submodule_page(dynamic raw);
+
+  @protected
+  SubmoduleRemovePreview dco_decode_submodule_remove_preview(dynamic raw);
+
+  @protected
+  SubmoduleState dco_decode_submodule_state(dynamic raw);
+
+  @protected
+  SubmoduleUpdateMode dco_decode_submodule_update_mode(dynamic raw);
+
+  @protected
+  SubtreeAction dco_decode_subtree_action(dynamic raw);
+
+  @protected
+  SubtreeInfo dco_decode_subtree_info(dynamic raw);
+
+  @protected
+  SubtreeOperationOptions dco_decode_subtree_operation_options(dynamic raw);
+
+  @protected
   int dco_decode_u_32(dynamic raw);
 
   @protected
@@ -313,6 +383,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
 
   @protected
+  RustStreamSink<OperationEvent> sse_decode_StreamSink_operation_event_Sse(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   RustStreamSink<RepositoryWatchEvent>
   sse_decode_StreamSink_repository_watch_event_Sse(
     SseDeserializer deserializer,
@@ -335,13 +410,34 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  double sse_decode_box_autoadd_f_64(SseDeserializer deserializer);
+
+  @protected
   FileChange sse_decode_box_autoadd_file_change(SseDeserializer deserializer);
+
+  @protected
+  OperationResult sse_decode_box_autoadd_operation_result(
+    SseDeserializer deserializer,
+  );
 
   @protected
   RebasePlan sse_decode_box_autoadd_rebase_plan(SseDeserializer deserializer);
 
   @protected
   RepositoryInitOptions sse_decode_box_autoadd_repository_init_options(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  SubmoduleAddOptions sse_decode_box_autoadd_submodule_add_options(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  SubtreeInfo sse_decode_box_autoadd_subtree_info(SseDeserializer deserializer);
+
+  @protected
+  SubtreeOperationOptions sse_decode_box_autoadd_subtree_operation_options(
     SseDeserializer deserializer,
   );
 
@@ -425,6 +521,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   ExternalEditor sse_decode_external_editor(SseDeserializer deserializer);
+
+  @protected
+  double sse_decode_f_64(SseDeserializer deserializer);
 
   @protected
   FileChange sse_decode_file_change(SseDeserializer deserializer);
@@ -525,7 +624,21 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<StashEntry> sse_decode_list_stash_entry(SseDeserializer deserializer);
 
   @protected
+  List<SubmoduleInfo> sse_decode_list_submodule_info(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<SubtreeInfo> sse_decode_list_subtree_info(SseDeserializer deserializer);
+
+  @protected
   MergeControl sse_decode_merge_control(SseDeserializer deserializer);
+
+  @protected
+  OperationEvent sse_decode_operation_event(SseDeserializer deserializer);
+
+  @protected
+  OperationPhase sse_decode_operation_phase(SseDeserializer deserializer);
 
   @protected
   OperationResult sse_decode_operation_result(SseDeserializer deserializer);
@@ -534,7 +647,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   String? sse_decode_opt_String(SseDeserializer deserializer);
 
   @protected
+  double? sse_decode_opt_box_autoadd_f_64(SseDeserializer deserializer);
+
+  @protected
   FileChange? sse_decode_opt_box_autoadd_file_change(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  OperationResult? sse_decode_opt_box_autoadd_operation_result(
     SseDeserializer deserializer,
   );
 
@@ -614,6 +735,41 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   StashEntry sse_decode_stash_entry(SseDeserializer deserializer);
 
   @protected
+  SubmoduleAddOptions sse_decode_submodule_add_options(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  SubmoduleInfo sse_decode_submodule_info(SseDeserializer deserializer);
+
+  @protected
+  SubmodulePage sse_decode_submodule_page(SseDeserializer deserializer);
+
+  @protected
+  SubmoduleRemovePreview sse_decode_submodule_remove_preview(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  SubmoduleState sse_decode_submodule_state(SseDeserializer deserializer);
+
+  @protected
+  SubmoduleUpdateMode sse_decode_submodule_update_mode(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  SubtreeAction sse_decode_subtree_action(SseDeserializer deserializer);
+
+  @protected
+  SubtreeInfo sse_decode_subtree_info(SseDeserializer deserializer);
+
+  @protected
+  SubtreeOperationOptions sse_decode_subtree_operation_options(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   int sse_decode_u_32(SseDeserializer deserializer);
 
   @protected
@@ -648,6 +804,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_StreamSink_operation_event_Sse(
+    RustStreamSink<OperationEvent> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_StreamSink_repository_watch_event_Sse(
     RustStreamSink<RepositoryWatchEvent> self,
     SseSerializer serializer,
@@ -672,8 +834,17 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_f_64(double self, SseSerializer serializer);
+
+  @protected
   void sse_encode_box_autoadd_file_change(
     FileChange self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_operation_result(
+    OperationResult self,
     SseSerializer serializer,
   );
 
@@ -686,6 +857,24 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_box_autoadd_repository_init_options(
     RepositoryInitOptions self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_submodule_add_options(
+    SubmoduleAddOptions self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_subtree_info(
+    SubtreeInfo self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_subtree_operation_options(
+    SubtreeOperationOptions self,
     SseSerializer serializer,
   );
 
@@ -787,6 +976,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     ExternalEditor self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_f_64(double self, SseSerializer serializer);
 
   @protected
   void sse_encode_file_change(FileChange self, SseSerializer serializer);
@@ -933,7 +1125,31 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_submodule_info(
+    List<SubmoduleInfo> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_subtree_info(
+    List<SubtreeInfo> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_merge_control(MergeControl self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_operation_event(
+    OperationEvent self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_operation_phase(
+    OperationPhase self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_operation_result(
@@ -945,8 +1161,17 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_opt_String(String? self, SseSerializer serializer);
 
   @protected
+  void sse_encode_opt_box_autoadd_f_64(double? self, SseSerializer serializer);
+
+  @protected
   void sse_encode_opt_box_autoadd_file_change(
     FileChange? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_operation_result(
+    OperationResult? self,
     SseSerializer serializer,
   );
 
@@ -1039,6 +1264,48 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_stash_entry(StashEntry self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_submodule_add_options(
+    SubmoduleAddOptions self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_submodule_info(SubmoduleInfo self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_submodule_page(SubmodulePage self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_submodule_remove_preview(
+    SubmoduleRemovePreview self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_submodule_state(
+    SubmoduleState self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_submodule_update_mode(
+    SubmoduleUpdateMode self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_subtree_action(SubtreeAction self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_subtree_info(SubtreeInfo self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_subtree_operation_options(
+    SubtreeOperationOptions self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_u_32(int self, SseSerializer serializer);

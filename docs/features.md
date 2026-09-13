@@ -20,6 +20,8 @@
 | 원격 작업 | 지원 | remote 관리, clone, fetch, pull, push, 선택적 upstream 설정, force-with-lease |
 | Git 설정 | 지원 | 저장소·전역 config 조회/편집, 상속 출처, 고급 key/value와 민감 값 보호 |
 | Sparse checkout | 부분 지원 | cone-mode 디렉터리 설정·변경·비활성화 지원, non-cone pattern은 제외 |
+| Submodule | 지원 | 지연 목록, 초기화, 기록/원격 업데이트, 동기화, 새 탭 열기, 추가와 안전 제거 |
+| Subtree | 지원 | 로컬 연결 등록, add/pull/push/split, squash 선택, 진행 로그와 취소 |
 | 고급 이력 작업 | 지원 | merge, rebase, interactive rebase, cherry-pick, revert, reset |
 | stash | 지원 | 생성, 목록, diff, apply, pop, drop |
 | 충돌 해결 | 지원 | 텍스트 3-way 편집, ours/theirs/both, 직접 편집, 외부 도구 |
@@ -193,6 +195,7 @@
 
 ## 성능을 위한 현재 설계
 
+- Submodule과 Subtree 정보는 초기 snapshot에서 읽지 않는다. 해당 패널을 펼칠 때만 Submodule을 100개 단위로 읽고 Subtree 로컬 등록 정보를 불러온다.
 - 변경 파일은 250개 단위로 Rust에서 잘라 전달하고 스크롤 끝에 가까워지면 다음 페이지를 자동으로 읽는다. 전체 개수와 staged 개수는 작은 요약값으로 별도 유지한다.
 - 로컬·원격 브랜치도 250개 단위로 전달하고 왼쪽 목록의 스크롤 위치에 따라 이어서 읽는다. 현재 브랜치는 정렬상 첫 페이지에 유지한다.
 - 변경 파일, 브랜치·원격·stash, 커밋 로그, diff 본문은 화면에 보이는 행 중심의 가상 목록으로 렌더링한다.
@@ -298,7 +301,8 @@
 
 | Git Bash 기능 | GitFront 현재 상태 |
 | --- | --- |
-| `git submodule` | **미지원** submodule 초기화·업데이트·상태 관리 UI가 없다. |
+| `git submodule` | **지원** 재귀 상태 조회, 초기화, 기록된 커밋/원격 업데이트, URL 동기화, 추가, 새 탭 열기와 확인 기반 제거를 제공한다. |
+| `git subtree` | **지원** 로컬 연결 등록과 add/pull/push/split, squash 선택, 진행 로그와 취소를 제공한다. 시스템 Git에 subtree 명령이 필요하다. |
 | `git worktree` | **미지원** 추가 checkout 생성·이동·삭제 UI가 없다. |
 | Git LFS 명령 | **미지원** LFS 추적 규칙, pull/push, lock 관리 UI가 없다. 시스템 Git 동작 중 LFS hook이 실행되는 것은 막지 않는다. |
 | `git gc`, `maintenance`, `repack`, `prune` | **미지원** 저장소 최적화와 정리 UI가 없다. |
@@ -320,7 +324,7 @@
 
 - 원격 브랜치 삭제와 복수 remote URL 전용 UI
 - tag 삭제·이름 변경·원격 push
-- submodule, Git worktree, Git LFS 관리 UI
+- Git worktree와 Git LFS 관리 UI
 - blame
 - GitHub/GitLab 등 호스팅 서비스의 PR·이슈 연동
 - 여러 커밋을 묶은 cherry-pick/revert

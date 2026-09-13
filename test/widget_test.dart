@@ -418,6 +418,8 @@ void main() {
       find.byKey(const ValueKey('virtualized-repository-sidebar')),
       findsOneWidget,
     );
+    expect(find.text('Submodules'), findsOneWidget);
+    expect(find.byTooltip('Manage subtrees'), findsOneWidget);
     expect(
       find.byKey(const ValueKey('virtualized-commit-list')),
       findsOneWidget,
