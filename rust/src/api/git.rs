@@ -2493,12 +2493,30 @@ pub fn remove_submodule(
     {
         let cache = PathBuf::from(cache);
         if cache.exists() {
-            trash::delete(&cache).map_err(|error| {
-                format!("Could not move the submodule cache to the Recycle Bin: {error}")
-            })?;
-            result
-                .stdout
-                .push_str("\nMoved the submodule cache to the Recycle Bin.");
+            match trash::delete(&cache) {
+                Ok(()) => result
+                    .stdout
+                    .push_str("\nMoved the submodule cache to the Recycle Bin."),
+                Err(recycle_error) => {
+                    let quarantine_root = repo.path().join("gitfront-trash");
+                    fs::create_dir_all(&quarantine_root).map_err(|fallback_error| {
+                        format!(
+                            "Could not move the submodule cache to the Recycle Bin ({recycle_error}) or create a recoverable quarantine ({fallback_error})."
+                        )
+                    })?;
+                    let quarantine = quarantine_root
+                        .join(format!("submodule-cache-{}", Uuid::new_v4().simple()));
+                    fs::rename(&cache, &quarantine).map_err(|fallback_error| {
+                        format!(
+                            "Could not move the submodule cache to the Recycle Bin ({recycle_error}) or the recoverable quarantine ({fallback_error})."
+                        )
+                    })?;
+                    result.stdout.push_str(&format!(
+                        "\nThe Recycle Bin was unavailable. Moved the submodule cache to recoverable quarantine: {}",
+                        display_path(quarantine)
+                    ));
+                }
+            }
         }
     }
     Ok(result)
