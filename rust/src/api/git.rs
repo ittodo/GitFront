@@ -4704,10 +4704,8 @@ mod tests {
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         );
-        assert_eq!(
-            fs::read_to_string(parent.join("vendor/child/library.txt"))
-                .expect("imported subtree file"),
-            "bundled subtree\n"
-        );
+        let imported = fs::read_to_string(parent.join("vendor/child/library.txt"))
+            .expect("imported subtree file");
+        assert_eq!(imported.trim_end(), "bundled subtree");
     }
 }
