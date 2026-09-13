@@ -82,18 +82,33 @@ class GitFrontStrings {
   String forgetSubtreeOperation(String prefix) =>
       text('Subtree 등록 해제: $prefix', 'Forget subtree: $prefix');
   String get refresh => text('새로고침', 'Refresh');
-  String get fetch => 'Fetch';
-  String get pull => 'Pull';
-  String get push => 'Push';
+  String get fetch => text('Fetch', 'Fetch');
+  String get pull => text('Pull', 'Pull');
+  String get push => text('Push', 'Push');
+  String get pullUsingConfig => text('Pull · Git 설정', 'Pull · Git config');
+  String get pullMerge => text('Pull · 병합', 'Pull · Merge');
+  String get pullRebase => text('받기 · Rebase', 'Pull · Rebase');
+  String get pullFastForwardOnly =>
+      text('Pull · Fast-forward만', 'Pull · Fast-forward only');
+  String get forceWithLease => text('Force with lease', 'Force with lease');
+  String get forceWithLeaseMenu =>
+      text('Force with lease…', 'Force with lease…');
   String get commit => text('커밋', 'Commit');
   String get commitMessage => text('커밋 메시지', 'Commit message');
-  String get staged => 'Staged';
-  String get unstaged => 'Unstaged';
+  String get staged => text('Staged', 'Staged');
+  String get unstaged => text('Unstaged', 'Unstaged');
   String get conflicts => text('충돌', 'Conflicts');
-  String get untracked => 'Untracked';
+  String get untracked => text('미추적', 'Untracked');
   String get diff => 'Diff';
-  String get unified => 'Unified';
-  String get sideBySide => 'Side by side';
+  String get unified => text('통합 보기', 'Unified');
+  String get sideBySide => text('나란히 보기', 'Side by side');
+  String get noTextualDiff => text('표시할 텍스트 차이가 없습니다', 'No textual diff');
+  String get noDifferences => text('차이가 없습니다', 'No differences');
+  String get noCommits => text('커밋이 없습니다', 'No commits');
+  String get binaryFile =>
+      text('바이너리 또는 비 UTF-8 파일', 'Binary or non-UTF-8 file');
+  String get fileLargerThan5Mb =>
+      text('파일이 5MB보다 큽니다', 'File is larger than 5 MB');
   String get operationLog => text('작업 로그', 'Operation log');
   String get clear => text('지우기', 'Clear');
   String get cancel => text('취소', 'Cancel');
@@ -103,13 +118,27 @@ class GitFrontStrings {
   String get language => text('언어', 'Language');
   String get theme => text('테마', 'Theme');
   String get system => text('시스템', 'System');
+  String get koreanLanguageName => text('한국어', '한국어');
+  String get englishLanguageName => text('English', 'English');
   String get light => text('밝게', 'Light');
   String get dark => text('어둡게', 'Dark');
   String get createBranch => text('브랜치 만들기', 'Create branch');
-  String get merge => 'Merge';
+  String get renameBranch => text('브랜치 이름 변경', 'Rename branch');
+  String get deleteBranch => text('브랜치 삭제', 'Delete branch');
+  String get rename => text('이름 변경', 'Rename');
+  String get merge => text('병합', 'Merge');
+  String get mergeIntoCurrent => text('현재 브랜치에 병합', 'Merge into current');
   String get rebase => 'Rebase';
+  String get rebaseCurrentOntoThis =>
+      text('현재 브랜치를 여기에 Rebase', 'Rebase current onto this');
   String get interactiveRebase => text('대화형 Rebase', 'Interactive rebase');
   String get stash => 'Stash';
+  String get createStash => text('Stash 만들기', 'Create stash');
+  String get message => text('메시지', 'Message');
+  String get apply => text('적용', 'Apply');
+  String get pop => text('적용 후 삭제', 'Pop');
+  String get drop => text('삭제…', 'Drop…');
+  String get dropStash => text('Stash 삭제', 'Drop stash');
   String get continueAction => text('계속', 'Continue');
   String get skip => text('건너뛰기', 'Skip');
   String get abort => text('중단하고 복원', 'Abort');
@@ -156,8 +185,20 @@ class GitFrontStrings {
   String get dragToReorderRepository =>
       text('드래그하여 저장소 순서 변경', 'Drag to reorder repositories');
   String get browse => text('찾아보기', 'Browse');
-  String get stage => 'Stage';
-  String get unstage => 'Unstage';
+  String get stage => text('Stage', 'Stage');
+  String get unstage => text('Unstage', 'Unstage');
+  String get more => text('더 보기', 'More');
+  String get resolveShort => text('해결', 'Resolve');
+  String get discardMenu => text('변경 폐기…', 'Discard…');
+  String get discardChangesQuestion => text('변경을 폐기할까요?', 'Discard changes?');
+  String untrackedRecycleWarning(String path) => text(
+    '$path\n\n이 파일은 Windows 휴지통으로 이동합니다.',
+    '$path\n\nThe file will be moved to the Recycle Bin.',
+  );
+  String trackedDiscardWarning(String path) => text(
+    '$path\n\n이 변경은 GitFront에서 복구할 수 없습니다.',
+    '$path\n\nTracked changes cannot be recovered by GitFront.',
+  );
   String get discard => text('변경 폐기', 'Discard changes');
   String get delete => text('삭제', 'Delete');
   String get showDetails => text('상세 패널 보기', 'Show detail panel');
@@ -244,9 +285,59 @@ class GitFrontStrings {
   String get discardSelectedLines => text('선택 줄 폐기', 'Discard selected lines');
   String get discardSelectedLinesQuestion =>
       text('선택한 줄을 폐기할까요?', 'Discard selected lines?');
+  String get stageHunk => text('Hunk 스테이지', 'Stage hunk');
+  String get unstageHunk => text('Hunk 스테이지 해제', 'Unstage hunk');
+  String get discardHunk => text('Hunk 폐기', 'Discard hunk');
+  String get discardHunkQuestion =>
+      text('이 Hunk를 폐기할까요?', 'Discard this hunk?');
   String get discardedChangesCannotRecover => text(
     '이 tracked 변경은 GitFront에서 복구할 수 없습니다.',
     'These tracked changes cannot be recovered by GitFront.',
+  );
+  String resolveConflictTitle(String path) =>
+      text('충돌 해결 · $path', 'Resolve · $path');
+  String get saveAndStage => text('저장하고 스테이지', 'Save and stage');
+  String get both => text('둘 다', 'Both');
+  String get result => text('결과', 'Result');
+  String get binaryConflict =>
+      text('바이너리 또는 비 UTF-8 충돌', 'Binary or non-UTF-8 conflict');
+  String get conflictLargerThan5Mb =>
+      text('충돌 파일이 5MB보다 큽니다', 'Conflict is larger than 5 MB');
+  String useVersion(String label) => text('$label 사용', 'Use $label');
+  String interactiveRebaseTitle(String upstream) =>
+      text('대화형 Rebase · $upstream', 'Interactive rebase · $upstream');
+  String get mergeCommitsFlattenWarning => text(
+    '병합 커밋이 포함되어 있습니다. 현재 버전에서는 병합 구조가 평탄화됩니다.',
+    'Merge commits are present. This v1 rebase will flatten them.',
+  );
+  String get newCommitMessage => text('새 커밋 메시지', 'New commit message');
+  String get startRebase => text('Rebase 시작', 'Start rebase');
+  String get systemDefaultApplication =>
+      text('시스템 기본 앱', 'System default application');
+  String get visualStudioCode =>
+      text('Visual Studio Code', 'Visual Studio Code');
+  String get gitMergeTool => text('Git mergetool', 'Git mergetool');
+  String get customExecutableOption =>
+      text('사용자 지정 실행 파일', 'Custom executable');
+  String get configKey => text('키', 'Key');
+  String get configValue => text('값', 'Value');
+  String get fetchUrl => 'Fetch URL';
+  String get pushUrlOptional => text('Push URL (선택)', 'Push URL (optional)');
+  String get updates => text('업데이트', 'Updates');
+  String get checkGithubReleases => text(
+    'GitHub Releases에서 업데이트를 확인합니다',
+    'Check GitHub Releases for updates',
+  );
+  String get download => text('다운로드', 'Download');
+  String get restartAndUpdate => text('재시작 및 업데이트', 'Restart & update');
+  String get check => text('확인', 'Check');
+  String get noOperationsYet => text('아직 작업 기록이 없습니다.', 'No operations yet.');
+  String get interactiveRebaseMenu =>
+      text('대화형 Rebase…', 'Interactive rebase…');
+  String get deleteMenu => text('삭제…', 'Delete…');
+  String get typeValueToConfirm => text(
+    '이 작업을 확인하려면 아래 값을 그대로 입력하세요.',
+    'Type the value below to confirm this destructive action.',
   );
 }
 

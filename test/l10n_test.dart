@@ -24,4 +24,18 @@ void main() {
       'Remove submodule: vendor/lib',
     );
   });
+
+  test('common workspace controls support Korean and English', () {
+    final korean = GitFrontStrings(const Locale('ko'));
+    final english = GitFrontStrings(const Locale('en'));
+
+    expect(korean.settings, '설정');
+    expect(english.settings, 'Settings');
+    expect(korean.noCommits, '커밋이 없습니다');
+    expect(english.noCommits, 'No commits');
+    expect(korean.discardChangesQuestion, '변경을 폐기할까요?');
+    expect(english.discardChangesQuestion, 'Discard changes?');
+    expect(korean.fetch, 'Fetch');
+    expect(english.fetch, 'Fetch');
+  });
 }

@@ -44,7 +44,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
               onCreate: () => _showCreateRepositoryDialog(strings),
               onOpen: () => _openRepository(strings),
               onClone: () => _showCloneDialog(strings),
-              onSettings: () => _showSettings(strings),
+              onSettings: _showSettings,
               onShowLog: () => _showOperationLog(strings),
             ),
             if (state.tabs.isNotEmpty)
@@ -125,10 +125,10 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     }
   }
 
-  void _showSettings(GitFrontStrings strings) {
+  void _showSettings() {
     showDialog<void>(
       context: context,
-      builder: (context) => _SettingsDialog(strings: strings),
+      builder: (context) => const _SettingsDialog(),
     );
   }
 
@@ -659,31 +659,34 @@ class _RepositoryToolbar extends ConsumerWidget {
               onSelected: (mode) => unawaited(
                 run((path) => git_api.pull(path: path, mode: mode), 'Pull'),
               ),
-              itemBuilder: (context) => const [
+              itemBuilder: (context) => [
                 PopupMenuItem(
                   value: PullMode.configured,
-                  child: Text('Pull · Git config'),
+                  child: Text(strings.pullUsingConfig),
                 ),
                 PopupMenuItem(
                   value: PullMode.merge,
-                  child: Text('Pull · Merge'),
+                  child: Text(strings.pullMerge),
                 ),
                 PopupMenuItem(
                   value: PullMode.rebase,
-                  child: Text('Pull · Rebase'),
+                  child: Text(strings.pullRebase),
                 ),
                 PopupMenuItem(
                   value: PullMode.fastForwardOnly,
-                  child: Text('Pull · Fast-forward only'),
+                  child: Text(strings.pullFastForwardOnly),
                 ),
               ],
-              child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
                 child: Row(
                   children: [
-                    Icon(Icons.arrow_downward, size: 18),
-                    SizedBox(width: 5),
-                    Text('Pull'),
+                    const Icon(Icons.arrow_downward, size: 18),
+                    const SizedBox(width: 5),
+                    Text(strings.pull),
                   ],
                 ),
               ),
@@ -695,7 +698,7 @@ class _RepositoryToolbar extends ConsumerWidget {
                 if (force &&
                     !await _confirmTyped(
                       context,
-                      title: 'Force with lease',
+                      title: strings.forceWithLease,
                       value: tab.snapshot.headName ?? '',
                     )) {
                   return;
@@ -733,17 +736,23 @@ class _RepositoryToolbar extends ConsumerWidget {
                   ),
                 );
               },
-              itemBuilder: (context) => const [
-                PopupMenuItem(value: false, child: Text('Push')),
-                PopupMenuItem(value: true, child: Text('Force with lease…')),
+              itemBuilder: (context) => [
+                PopupMenuItem(value: false, child: Text(strings.push)),
+                PopupMenuItem(
+                  value: true,
+                  child: Text(strings.forceWithLeaseMenu),
+                ),
               ],
-              child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
                 child: Row(
                   children: [
-                    Icon(Icons.arrow_upward, size: 18),
-                    SizedBox(width: 5),
-                    Text('Push'),
+                    const Icon(Icons.arrow_upward, size: 18),
+                    const SizedBox(width: 5),
+                    Text(strings.push),
                   ],
                 ),
               ),
@@ -1106,7 +1115,7 @@ class _RepositorySidebar extends ConsumerWidget {
       case 'rename':
         final name = await _textPrompt(
           context,
-          title: 'Rename branch',
+          title: strings.renameBranch,
           label: branch.name,
         );
         if (name != null) {
@@ -1123,7 +1132,7 @@ class _RepositorySidebar extends ConsumerWidget {
       case 'delete':
         if (await _confirmTyped(
           context,
-          title: 'Delete branch',
+          title: strings.deleteBranch,
           value: branch.name,
         )) {
           await _run(
@@ -1176,8 +1185,8 @@ class _RepositorySidebar extends ConsumerWidget {
   Future<void> _saveStash(BuildContext context, WidgetRef ref) async {
     final message = await _textPrompt(
       context,
-      title: 'Create stash',
-      label: 'Message',
+      title: strings.createStash,
+      label: strings.message,
       allowEmpty: true,
     );
     if (message == null) return;
@@ -1234,7 +1243,7 @@ class _RepositorySidebar extends ConsumerWidget {
     if (action == 'drop' &&
         !await _confirmTyped(
           context,
-          title: 'Drop stash',
+          title: strings.dropStash,
           value: 'stash@{${stash.index}}',
         )) {
       return;
@@ -1824,6 +1833,7 @@ class _VirtualSidebarListState extends ConsumerState<_VirtualSidebarList> {
           },
         ),
         _SidebarBranchItem(:final branch) => _BranchTile(
+          strings: widget.strings,
           branch: branch,
           tab: tab,
           onTap: branch.isHead || tab.busy
@@ -1875,10 +1885,10 @@ class _VirtualSidebarListState extends ConsumerState<_VirtualSidebarList> {
           onTap: () => widget.onShowStash(stash),
           trailing: PopupMenuButton<String>(
             onSelected: (action) => widget.onStashAction(stash, action),
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'apply', child: Text('Apply')),
-              PopupMenuItem(value: 'pop', child: Text('Pop')),
-              PopupMenuItem(value: 'drop', child: Text('Drop…')),
+            itemBuilder: (_) => [
+              PopupMenuItem(value: 'apply', child: Text(widget.strings.apply)),
+              PopupMenuItem(value: 'pop', child: Text(widget.strings.pop)),
+              PopupMenuItem(value: 'drop', child: Text(widget.strings.drop)),
             ],
           ),
         ),
@@ -2191,6 +2201,9 @@ class _ChangeTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final strings = GitFrontStrings(
+      resolveLocale(context, ref.read(gitFrontProvider).language),
+    );
     final selected =
         tab.selectedFile?.path == file.path && tab.selectedFileStaged == staged;
     final kind = file.conflicted
@@ -2222,19 +2235,19 @@ class _ChangeTile extends ConsumerWidget {
         children: [
           if (file.conflicted)
             IconButton(
-              tooltip: 'Resolve',
+              tooltip: strings.resolveShort,
               icon: const Icon(Icons.build_outlined, size: 18),
               onPressed: () => _showConflictEditor(context, ref),
             )
           else
             IconButton(
-              tooltip: staged ? 'Unstage' : 'Stage',
+              tooltip: staged ? strings.unstage : strings.stage,
               icon: Icon(staged ? Icons.remove : Icons.add, size: 18),
               onPressed: tab.busy ? null : () => _toggleStage(ref),
             ),
           if (!staged)
             PopupMenuButton<String>(
-              tooltip: 'More',
+              tooltip: strings.more,
               onSelected: (value) {
                 if (value == 'discard') _discard(context, ref);
                 if (value == 'external') _openExternal(ref);
@@ -2251,7 +2264,10 @@ class _ChangeTile extends ConsumerWidget {
                     ).openExternal,
                   ),
                 ),
-                const PopupMenuItem(value: 'discard', child: Text('Discard…')),
+                PopupMenuItem(
+                  value: 'discard',
+                  child: Text(strings.discardMenu),
+                ),
               ],
             ),
         ],
@@ -2280,24 +2296,27 @@ class _ChangeTile extends ConsumerWidget {
   );
 
   Future<void> _discard(BuildContext context, WidgetRef ref) async {
+    final strings = GitFrontStrings(
+      resolveLocale(context, ref.read(gitFrontProvider).language),
+    );
     final confirmed =
         await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            title: const Text('Discard changes?'),
+            title: Text(strings.discardChangesQuestion),
             content: Text(
               file.untracked
-                  ? '${file.path}\n\nThe file will be moved to the Recycle Bin.'
-                  : '${file.path}\n\nTracked changes cannot be recovered by GitFront.',
+                  ? strings.untrackedRecycleWarning(file.path)
+                  : strings.trackedDiscardWarning(file.path),
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context, false),
-                child: const Text('Cancel'),
+                child: Text(strings.cancel),
               ),
               FilledButton(
                 onPressed: () => Navigator.pop(context, true),
-                child: const Text('Discard'),
+                child: Text(strings.discard),
               ),
             ],
           ),
@@ -2707,7 +2726,7 @@ class _HistoryPanel extends ConsumerWidget {
       if (tab.busy) {
         return const Center(child: CircularProgressIndicator());
       }
-      return const Center(child: Text('No commits'));
+      return Center(child: Text(strings.noCommits));
     }
     return ListView.builder(
       key: const ValueKey('virtualized-commit-list'),
@@ -3609,7 +3628,7 @@ class _DiffPane extends StatelessWidget {
     }
     final diff = tab.diff;
     if (diff == null || diff.files.isEmpty) {
-      return const Center(child: Text('No textual diff'));
+      return Center(child: Text(strings.noTextualDiff));
     }
     return _DiffViewer(document: diff, tab: tab, onError: onError);
   }
@@ -3719,8 +3738,9 @@ class _DiffViewerState extends State<_DiffViewer> {
 
   @override
   Widget build(BuildContext context) {
+    final strings = GitFrontStrings(Localizations.localeOf(context));
     if (items.isEmpty) {
-      return const Center(child: Text('No differences'));
+      return Center(child: Text(strings.noDifferences));
     }
     return Column(
       children: [
@@ -3740,9 +3760,9 @@ class _DiffViewerState extends State<_DiffViewer> {
               ),
               SegmentedButton<bool>(
                 showSelectedIcon: false,
-                segments: const [
-                  ButtonSegment(value: false, label: Text('Unified')),
-                  ButtonSegment(value: true, label: Text('Side by side')),
+                segments: [
+                  ButtonSegment(value: false, label: Text(strings.unified)),
+                  ButtonSegment(value: true, label: Text(strings.sideBySide)),
                 ],
                 selected: {sideBySide},
                 onSelectionChanged: (value) {
@@ -3810,7 +3830,7 @@ class _DiffViewerState extends State<_DiffViewer> {
         leading: const Icon(Icons.insert_drive_file_outlined),
         title: Text(file.newPath ?? file.oldPath ?? 'File'),
         subtitle: Text(
-          file.binary ? 'Binary or non-UTF-8 file' : 'File is larger than 5 MB',
+          file.binary ? strings.binaryFile : strings.fileLargerThan5Mb,
         ),
       ),
       _DiffHunkHeader(:final hunk) => Material(
@@ -3831,7 +3851,9 @@ class _DiffViewerState extends State<_DiffViewer> {
                       ? null
                       : () => _applyHunk(hunk, false),
                   child: Text(
-                    widget.document.staged ? 'Unstage hunk' : 'Stage hunk',
+                    widget.document.staged
+                        ? strings.unstageHunk
+                        : strings.stageHunk,
                   ),
                 ),
               if (!widget.readOnly &&
@@ -3858,7 +3880,7 @@ class _DiffViewerState extends State<_DiffViewer> {
                 ),
               if (!widget.readOnly && !widget.document.staged)
                 IconButton(
-                  tooltip: 'Discard hunk',
+                  tooltip: strings.discardHunk,
                   icon: const Icon(Icons.undo, size: 18),
                   onPressed: widget.tab.busy ? null : () => _discardHunk(hunk),
                 ),
@@ -3981,22 +4003,21 @@ class _DiffViewerState extends State<_DiffViewer> {
   }
 
   Future<void> _discardHunk(DiffHunk hunk) async {
+    final strings = GitFrontStrings(Localizations.localeOf(context));
     final confirmed =
         await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            title: const Text('Discard this hunk?'),
-            content: const Text(
-              'These tracked changes cannot be recovered by GitFront.',
-            ),
+            title: Text(strings.discardHunkQuestion),
+            content: Text(strings.discardedChangesCannotRecover),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context, false),
-                child: const Text('Cancel'),
+                child: Text(strings.cancel),
               ),
               FilledButton(
                 onPressed: () => Navigator.pop(context, true),
-                child: const Text('Discard'),
+                child: Text(strings.discard),
               ),
             ],
           ),
@@ -4432,20 +4453,21 @@ class _ConflictEditorState extends State<_ConflictEditor> {
   @override
   Widget build(BuildContext context) {
     final conflict = widget.conflict;
+    final strings = GitFrontStrings(Localizations.localeOf(context));
     return Dialog.fullscreen(
       child: Scaffold(
         appBar: AppBar(
-          title: Text('Resolve · ${conflict.path}'),
+          title: Text(strings.resolveConflictTitle(conflict.path)),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
+              child: Text(strings.cancel),
             ),
             const SizedBox(width: 8),
             FilledButton.icon(
               onPressed: () => Navigator.pop(context, result.text),
               icon: const Icon(Icons.check),
-              label: const Text('Save and stage'),
+              label: Text(strings.saveAndStage),
             ),
             const SizedBox(width: 12),
           ],
@@ -4504,9 +4526,9 @@ class _ConflictEditorState extends State<_ConflictEditor> {
                                   '#${index + 1} ${conflict.oursLabel}',
                                 ),
                               ),
-                              const ButtonSegment(
+                              ButtonSegment(
                                 value: 'both',
-                                label: Text('Both'),
+                                label: Text(strings.both),
                               ),
                               ButtonSegment(
                                 value: 'theirs',
@@ -4532,11 +4554,11 @@ class _ConflictEditorState extends State<_ConflictEditor> {
                         fontFamily: 'monospace',
                         fontSize: 12.5,
                       ),
-                      decoration: const InputDecoration(
-                        labelText: 'Result',
+                      decoration: InputDecoration(
+                        labelText: strings.result,
                         alignLabelWithHint: true,
                         border: InputBorder.none,
-                        contentPadding: EdgeInsets.all(12),
+                        contentPadding: const EdgeInsets.all(12),
                       ),
                     ),
                   ),
@@ -4605,6 +4627,7 @@ class _BinaryConflict extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final strings = GitFrontStrings(Localizations.localeOf(context));
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -4613,8 +4636,8 @@ class _BinaryConflict extends StatelessWidget {
           const SizedBox(height: 12),
           Text(
             conflict.binary
-                ? 'Binary or non-UTF-8 conflict'
-                : 'Conflict is larger than 5 MB',
+                ? strings.binaryConflict
+                : strings.conflictLargerThan5Mb,
           ),
           const SizedBox(height: 16),
           Wrap(
@@ -4622,11 +4645,11 @@ class _BinaryConflict extends StatelessWidget {
             children: [
               OutlinedButton(
                 onPressed: () => result.text = conflict.ours,
-                child: Text('Use ${conflict.oursLabel}'),
+                child: Text(strings.useVersion(conflict.oursLabel)),
               ),
               OutlinedButton(
                 onPressed: () => result.text = conflict.theirs,
-                child: Text('Use ${conflict.theirsLabel}'),
+                child: Text(strings.useVersion(conflict.theirsLabel)),
               ),
             ],
           ),
@@ -4650,19 +4673,18 @@ class _InteractiveRebaseDialogState extends State<_InteractiveRebaseDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final strings = GitFrontStrings(Localizations.localeOf(context));
     return AlertDialog(
-      title: Text('Interactive rebase · ${widget.plan.upstream}'),
+      title: Text(strings.interactiveRebaseTitle(widget.plan.upstream)),
       content: SizedBox(
         width: 760,
         height: 560,
         child: Column(
           children: [
             if (widget.plan.containsMergeCommits)
-              const MaterialBanner(
-                content: Text(
-                  'Merge commits are present. This v1 rebase will flatten them.',
-                ),
-                actions: [SizedBox.shrink()],
+              MaterialBanner(
+                content: Text(strings.mergeCommitsFlattenWarning),
+                actions: const [SizedBox.shrink()],
               ),
             Expanded(
               child: ReorderableListView.builder(
@@ -4702,7 +4724,7 @@ class _InteractiveRebaseDialogState extends State<_InteractiveRebaseDialog> {
                           message = await _textPrompt(
                             context,
                             title: action.name,
-                            label: 'New commit message',
+                            label: strings.newCommitMessage,
                             initialValue: item.summary,
                           );
                           if (message == null) return;
@@ -4727,7 +4749,7 @@ class _InteractiveRebaseDialogState extends State<_InteractiveRebaseDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: Text(strings.cancel),
         ),
         FilledButton(
           onPressed: () => Navigator.pop(
@@ -4739,7 +4761,7 @@ class _InteractiveRebaseDialogState extends State<_InteractiveRebaseDialog> {
               containsMergeCommits: widget.plan.containsMergeCommits,
             ),
           ),
-          child: const Text('Start rebase'),
+          child: Text(strings.startRebase),
         ),
       ],
     );
@@ -5548,13 +5570,13 @@ class _SubtreeManagerDialogState extends ConsumerState<_SubtreeManagerDialog> {
 }
 
 class _SettingsDialog extends ConsumerWidget {
-  const _SettingsDialog({required this.strings});
-  final GitFrontStrings strings;
+  const _SettingsDialog();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(gitFrontProvider);
     final controller = ref.read(gitFrontProvider.notifier);
+    final strings = GitFrontStrings(resolveLocale(context, state.language));
     return AlertDialog(
       title: Text(strings.settings),
       content: SizedBox(
@@ -5570,15 +5592,18 @@ class _SettingsDialog extends ConsumerWidget {
               ),
               const SizedBox(height: 6),
               SegmentedButton<AppLanguage>(
-                segments: const [
+                segments: [
                   ButtonSegment(
                     value: AppLanguage.system,
-                    label: Text('System'),
+                    label: Text(strings.system),
                   ),
-                  ButtonSegment(value: AppLanguage.korean, label: Text('한국어')),
+                  ButtonSegment(
+                    value: AppLanguage.korean,
+                    label: Text(strings.koreanLanguageName),
+                  ),
                   ButtonSegment(
                     value: AppLanguage.english,
-                    label: Text('English'),
+                    label: Text(strings.englishLanguageName),
                   ),
                 ],
                 selected: {state.language},
@@ -5619,22 +5644,22 @@ class _SettingsDialog extends ConsumerWidget {
               DropdownButtonFormField<ExternalEditor>(
                 initialValue: state.externalEditor,
                 decoration: const InputDecoration(isDense: true),
-                items: const [
+                items: [
                   DropdownMenuItem(
                     value: ExternalEditor.vsCode,
-                    child: Text('Visual Studio Code'),
+                    child: Text(strings.visualStudioCode),
                   ),
                   DropdownMenuItem(
                     value: ExternalEditor.systemDefault,
-                    child: Text('System default application'),
+                    child: Text(strings.systemDefaultApplication),
                   ),
                   DropdownMenuItem(
                     value: ExternalEditor.gitMergeTool,
-                    child: Text('Git mergetool'),
+                    child: Text(strings.gitMergeTool),
                   ),
                   DropdownMenuItem(
                     value: ExternalEditor.custom,
-                    child: Text('Custom executable'),
+                    child: Text(strings.customExecutableOption),
                   ),
                 ],
                 onChanged: (value) {
@@ -5717,7 +5742,7 @@ class _SettingsDialog extends ConsumerWidget {
                       ),
               ),
               const Divider(),
-              const _UpdateCard(),
+              _UpdateCard(strings: strings),
             ],
           ),
         ),
@@ -6085,12 +6110,12 @@ Future<_ConfigDraft?> _showConfigDraftDialog(
             TextField(
               controller: key,
               autofocus: true,
-              decoration: const InputDecoration(labelText: 'Key'),
+              decoration: InputDecoration(labelText: strings.configKey),
             ),
             const SizedBox(height: 8),
             TextField(
               controller: value,
-              decoration: const InputDecoration(labelText: 'Value'),
+              decoration: InputDecoration(labelText: strings.configValue),
             ),
           ],
         ),
@@ -6333,7 +6358,7 @@ Future<_RemoteDraft?> _showRemoteDialog(
             TextField(
               controller: fetch,
               decoration: InputDecoration(
-                labelText: 'Fetch URL',
+                labelText: strings.fetchUrl,
                 helperText: redacted
                     ? strings.text(
                         '보호된 자격 증명 URL을 다시 입력하세요.',
@@ -6345,9 +6370,7 @@ Future<_RemoteDraft?> _showRemoteDialog(
             const SizedBox(height: 8),
             TextField(
               controller: push,
-              decoration: const InputDecoration(
-                labelText: 'Push URL (optional)',
-              ),
+              decoration: InputDecoration(labelText: strings.pushUrlOptional),
             ),
           ],
         ),
@@ -6515,7 +6538,9 @@ class _SparseCheckoutDialogState extends ConsumerState<_SparseCheckoutDialog> {
 }
 
 class _UpdateCard extends StatefulWidget {
-  const _UpdateCard();
+  const _UpdateCard({required this.strings});
+
+  final GitFrontStrings strings;
 
   @override
   State<_UpdateCard> createState() => _UpdateCardState();
@@ -6536,14 +6561,14 @@ class _UpdateCardState extends State<_UpdateCard> {
               child: CircularProgressIndicator(strokeWidth: 2),
             )
           : const Icon(Icons.system_update_alt),
-      title: const Text('Updates'),
-      subtitle: Text(current?.message ?? 'Check GitHub Releases for updates'),
+      title: Text(widget.strings.updates),
+      subtitle: Text(current?.message ?? widget.strings.checkGithubReleases),
       trailing: FilledButton.tonal(
         onPressed: busy ? null : _performAction,
         child: Text(switch (current?.state) {
-          UpdateState.available => 'Download',
-          UpdateState.downloaded => 'Restart & update',
-          _ => 'Check',
+          UpdateState.available => widget.strings.download,
+          UpdateState.downloaded => widget.strings.restartAndUpdate,
+          _ => widget.strings.check,
         }),
       ),
     );
@@ -6605,9 +6630,9 @@ class _OperationLog extends ConsumerWidget {
             child: Container(
               color: Theme.of(context).colorScheme.surfaceContainerLowest,
               child: log.isEmpty
-                  ? const Padding(
-                      padding: EdgeInsets.all(12),
-                      child: Text('No operations yet.'),
+                  ? Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Text(strings.noOperationsYet),
                     )
                   : SelectionArea(
                       child: ListView.separated(
@@ -6807,12 +6832,14 @@ class _SidebarHeader extends StatelessWidget {
 
 class _BranchTile extends StatelessWidget {
   const _BranchTile({
+    required this.strings,
     required this.branch,
     required this.tab,
     required this.onTap,
     required this.onAction,
   });
 
+  final GitFrontStrings strings;
   final BranchInfo branch;
   final RepoTabState tab;
   final VoidCallback? onTap;
@@ -6836,19 +6863,22 @@ class _BranchTile extends StatelessWidget {
         enabled: !tab.busy,
         onSelected: onAction,
         itemBuilder: (_) => [
-          const PopupMenuItem(value: 'rename', child: Text('Rename')),
-          if (!branch.isHead) ...const [
-            PopupMenuItem(value: 'merge', child: Text('Merge into current')),
+          PopupMenuItem(value: 'rename', child: Text(strings.rename)),
+          if (!branch.isHead) ...[
+            PopupMenuItem(
+              value: 'merge',
+              child: Text(strings.mergeIntoCurrent),
+            ),
             PopupMenuItem(
               value: 'rebase',
-              child: Text('Rebase current onto this'),
+              child: Text(strings.rebaseCurrentOntoThis),
             ),
             PopupMenuItem(
               value: 'interactive',
-              child: Text('Interactive rebase…'),
+              child: Text(strings.interactiveRebaseMenu),
             ),
-            PopupMenuDivider(),
-            PopupMenuItem(value: 'delete', child: Text('Delete…')),
+            const PopupMenuDivider(),
+            PopupMenuItem(value: 'delete', child: Text(strings.deleteMenu)),
           ],
         ],
       ),
@@ -6933,6 +6963,7 @@ Future<String?> _textPrompt(
   String initialValue = '',
   bool allowEmpty = false,
 }) async {
+  final strings = GitFrontStrings(Localizations.localeOf(context));
   final controller = TextEditingController(text: initialValue);
   final result = await showDialog<String>(
     context: context,
@@ -6946,7 +6977,7 @@ Future<String?> _textPrompt(
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: Text(strings.cancel),
         ),
         FilledButton(
           onPressed: () {
@@ -6954,7 +6985,7 @@ Future<String?> _textPrompt(
             if (!allowEmpty && value.isEmpty) return;
             Navigator.pop(context, value);
           },
-          child: const Text('OK'),
+          child: Text(strings.confirm),
         ),
       ],
     ),
@@ -6968,6 +6999,7 @@ Future<bool> _confirmTyped(
   required String title,
   required String value,
 }) async {
+  final strings = GitFrontStrings(Localizations.localeOf(context));
   final controller = TextEditingController();
   final result =
       await showDialog<bool>(
@@ -6979,9 +7011,7 @@ Future<bool> _confirmTyped(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Type the value below to confirm this destructive action.',
-                ),
+                Text(strings.typeValueToConfirm),
                 const SizedBox(height: 8),
                 SelectableText(
                   value,
@@ -7001,13 +7031,13 @@ Future<bool> _confirmTyped(
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context, false),
-                child: const Text('Cancel'),
+                child: Text(strings.cancel),
               ),
               FilledButton(
                 onPressed: controller.text == value
                     ? () => Navigator.pop(context, true)
                     : null,
-                child: const Text('Confirm'),
+                child: Text(strings.confirm),
               ),
             ],
           ),

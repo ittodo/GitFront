@@ -231,6 +231,39 @@ void main() {
     expect(find.textContaining('repository'), findsWidgets);
   });
 
+  testWidgets('switches between English and Korean and persists the choice', (
+    tester,
+  ) async {
+    final store = _MemorySettingsStore();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          settingsStoreProvider.overrideWithValue(store),
+          gitFrontProvider.overrideWith(
+            () => _FakeController(
+              const GitFrontState(
+                language: AppLanguage.english,
+                initializing: false,
+              ),
+            ),
+          ),
+        ],
+        child: const GitFrontApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Settings'));
+    await tester.pumpAndSettle();
+    expect(find.text('Language'), findsOneWidget);
+
+    await tester.tap(find.text('한국어'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('언어'), findsOneWidget);
+    expect(store.settings.language, 'korean');
+  });
+
   testWidgets('opens repository creation and practical clone options', (
     tester,
   ) async {
