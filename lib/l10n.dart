@@ -26,8 +26,28 @@ class GitFrontStrings {
   String get branches => text('브랜치', 'Branches');
   String get remotes => text('원격', 'Remotes');
   String get stashes => text('스태시', 'Stashes');
-  String get submodules => 'Submodules';
+  String get submodules => text('서브모듈', 'Submodules');
   String get manageSubtrees => text('Subtree 관리', 'Manage subtrees');
+  String get addSubmodule => text('서브모듈 추가', 'Add submodule');
+  String get registerSubtree => text('Subtree 등록', 'Register subtree');
+  String get registerExistingSubtree =>
+      text('기존 Subtree 등록', 'Register existing subtree');
+  String get forgetSubtree => text('Subtree 등록 해제', 'Forget subtree');
+  String get subtreePush => text('Subtree Push', 'Subtree push');
+  String get subtreeSplit => text('Subtree 분리', 'Subtree split');
+  String get subtreePrefix => text('대상 폴더', 'Prefix');
+  String get subtreeRef => text('브랜치 또는 Ref', 'Branch or ref');
+  String get subtreeSquash => text('이력을 하나의 커밋으로 합치기', 'Squash history');
+  String get subtreeSquashShort => text('이력 합침', 'squash');
+  String get resultBranchOptional =>
+      text('결과 브랜치 (선택)', 'Result branch (optional)');
+  String get subtreeUnavailable => text(
+    '내장 Subtree를 실행하는 데 필요한 Git for Windows 또는 Bash를 찾을 수 없습니다.',
+    'Git for Windows or Bash required by the bundled subtree helper was not found.',
+  );
+  String get pullSubtree => text('변경 가져오기', 'Pull');
+  String get pushSubtree => text('변경 보내기…', 'Push…');
+  String get splitSubtree => text('이력 분리…', 'Split…');
   String get initialize => text('초기화', 'Initialize');
   String get updateRecorded =>
       text('기록된 커밋으로 업데이트', 'Update to recorded commits');
@@ -35,7 +55,32 @@ class GitFrontStrings {
       text('원격 최신 커밋으로 업데이트', 'Update from configured remotes');
   String get synchronize => text('URL 동기화', 'Synchronize URLs');
   String get openAsTab => text('새 탭으로 열기', 'Open as tab');
-  String get removeSubmodule => text('Submodule 제거', 'Remove submodule');
+  String get removeSubmodule => text('서브모듈 제거', 'Remove submodule');
+  String get submoduleUninitialized => text('초기화 안 됨', 'Uninitialized');
+  String get submoduleClean => text('정상', 'Clean');
+  String get submoduleDifferentCommit => text('다른 커밋', 'Different commit');
+  String get submoduleModified => text('수정됨', 'Modified');
+  String get submoduleUntracked => text('미추적 파일 있음', 'Untracked files');
+  String get submoduleConflicted => text('충돌', 'Conflicted');
+  String get submoduleMissing => text('폴더 없음', 'Missing');
+  String get updateRemoteSubmodulesWarning => text(
+    '선택한 서브모듈을 설정된 원격 브랜치의 최신 커밋으로 이동합니다.',
+    'Move the selected submodules to the latest configured remote commits.',
+  );
+  String addSubmoduleOperation() => text('서브모듈 추가', 'Add submodule');
+  String removeSubmoduleOperation(String path) =>
+      text('서브모듈 제거: $path', 'Remove submodule: $path');
+  String get initializeSubmodulesOperation =>
+      text('서브모듈 초기화', 'Initialize submodules');
+  String get updateSubmodulesOperation =>
+      text('서브모듈 업데이트', 'Update submodules');
+  String get updateRemoteSubmodulesOperation =>
+      text('원격에서 서브모듈 업데이트', 'Update submodules from remotes');
+  String get synchronizeSubmodulesOperation =>
+      text('서브모듈 URL 동기화', 'Synchronize submodules');
+  String get registerSubtreeOperation => text('Subtree 등록', 'Register subtree');
+  String forgetSubtreeOperation(String prefix) =>
+      text('Subtree 등록 해제: $prefix', 'Forget subtree: $prefix');
   String get refresh => text('새로고침', 'Refresh');
   String get fetch => 'Fetch';
   String get pull => 'Pull';

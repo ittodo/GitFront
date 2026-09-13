@@ -1383,7 +1383,7 @@ class _SubmodulePanelState extends ConsumerState<_SubmodulePanel> {
     );
     if (options == null) return;
     await _run(
-      'Add submodule',
+      widget.strings.addSubmoduleOperation(),
       (path) => git_api.addSubmodule(path: path, options: options),
     );
   }
@@ -1403,7 +1403,7 @@ class _SubmodulePanelState extends ConsumerState<_SubmodulePanel> {
         return;
       }
       await _run(
-        'Remove submodule ${module.path}',
+        widget.strings.removeSubmoduleOperation(module.path),
         (path) => git_api.removeSubmodule(
           path: path,
           submodulePath: module.path,
@@ -1454,7 +1454,7 @@ class _SubmodulePanelState extends ConsumerState<_SubmodulePanel> {
                   switch (action) {
                     case 'init':
                       await _run(
-                        'Initialize submodules',
+                        strings.initializeSubmodulesOperation,
                         (path) => git_api.initSubmodules(
                           path: path,
                           paths: _paths,
@@ -1463,7 +1463,7 @@ class _SubmodulePanelState extends ConsumerState<_SubmodulePanel> {
                       );
                     case 'update':
                       await _run(
-                        'Update submodules',
+                        strings.updateSubmodulesOperation,
                         (path) => git_api.updateSubmodules(
                           path: path,
                           paths: _paths,
@@ -1476,15 +1476,12 @@ class _SubmodulePanelState extends ConsumerState<_SubmodulePanel> {
                         context,
                         strings: strings,
                         title: strings.updateRemote,
-                        message: strings.text(
-                          '선택한 Submodule을 설정된 원격 브랜치의 최신 커밋으로 이동합니다.',
-                          'Move the selected submodules to the latest configured remote commits.',
-                        ),
+                        message: strings.updateRemoteSubmodulesWarning,
                       )) {
                         return;
                       }
                       await _run(
-                        'Update submodules from remotes',
+                        strings.updateRemoteSubmodulesOperation,
                         (path) => git_api.updateSubmodules(
                           path: path,
                           paths: _paths,
@@ -1494,7 +1491,7 @@ class _SubmodulePanelState extends ConsumerState<_SubmodulePanel> {
                       );
                     case 'sync':
                       await _run(
-                        'Synchronize submodules',
+                        strings.synchronizeSubmodulesOperation,
                         (path) => git_api.syncSubmodules(
                           path: path,
                           paths: _paths,
@@ -1545,31 +1542,16 @@ class _SubmodulePanelState extends ConsumerState<_SubmodulePanel> {
                           module.state != SubmoduleState.uninitialized &&
                           module.state != SubmoduleState.missing;
                       final statusLabel = switch (module.state) {
-                        SubmoduleState.uninitialized => strings.text(
-                          '초기화 안 됨',
-                          'Uninitialized',
-                        ),
-                        SubmoduleState.clean => strings.text('정상', 'Clean'),
-                        SubmoduleState.checkedOutDifferent => strings.text(
-                          '다른 커밋',
-                          'Different commit',
-                        ),
-                        SubmoduleState.modified => strings.text(
-                          '수정됨',
-                          'Modified',
-                        ),
-                        SubmoduleState.untracked => strings.text(
-                          '미추적 파일',
-                          'Untracked files',
-                        ),
-                        SubmoduleState.conflicted => strings.text(
-                          '충돌',
-                          'Conflicted',
-                        ),
-                        SubmoduleState.missing => strings.text(
-                          '경로 없음',
-                          'Missing',
-                        ),
+                        SubmoduleState.uninitialized =>
+                          strings.submoduleUninitialized,
+                        SubmoduleState.clean => strings.submoduleClean,
+                        SubmoduleState.checkedOutDifferent =>
+                          strings.submoduleDifferentCommit,
+                        SubmoduleState.modified => strings.submoduleModified,
+                        SubmoduleState.untracked => strings.submoduleUntracked,
+                        SubmoduleState.conflicted =>
+                          strings.submoduleConflicted,
+                        SubmoduleState.missing => strings.submoduleMissing,
                       };
                       return ListTile(
                         dense: true,
@@ -1644,7 +1626,7 @@ class _AddSubmoduleDialogState extends State<_AddSubmoduleDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-    title: Text(widget.strings.text('Submodule 추가', 'Add submodule')),
+    title: Text(widget.strings.addSubmodule),
     content: SizedBox(
       width: 500,
       child: Column(
@@ -5302,7 +5284,7 @@ class _SubtreeManagerDialogState extends ConsumerState<_SubtreeManagerDialog> {
       await ref
           .read(gitFrontProvider.notifier)
           .runOperation(
-            'Register subtree',
+            widget.strings.registerSubtreeOperation,
             (path) => git_api.registerSubtree(path: path, subtree: entry),
           );
       await _load();
@@ -5346,7 +5328,7 @@ class _SubtreeManagerDialogState extends ConsumerState<_SubtreeManagerDialog> {
         !await _confirmAction(
           context,
           strings: widget.strings,
-          title: 'Subtree push',
+          title: widget.strings.subtreePush,
           message: '${entry.repository}  ${entry.reference}',
         )) {
       return;
@@ -5356,11 +5338,8 @@ class _SubtreeManagerDialogState extends ConsumerState<_SubtreeManagerDialog> {
       if (!mounted) return;
       branch = await _textPrompt(
         context,
-        title: 'Subtree split',
-        label: widget.strings.text(
-          '결과 브랜치 (비워도 됨)',
-          'Result branch (optional)',
-        ),
+        title: widget.strings.subtreeSplit,
+        label: widget.strings.resultBranchOptional,
         allowEmpty: true,
       );
       if (branch == null) return;
@@ -5382,7 +5361,7 @@ class _SubtreeManagerDialogState extends ConsumerState<_SubtreeManagerDialog> {
       await ref
           .read(gitFrontProvider.notifier)
           .runOperation(
-            'Forget subtree ${entry.prefix}',
+            widget.strings.forgetSubtreeOperation(entry.prefix),
             (path) => git_api.forgetSubtree(path: path, id: entry.id),
           );
       await _load();
@@ -5408,11 +5387,7 @@ class _SubtreeManagerDialogState extends ConsumerState<_SubtreeManagerDialog> {
                   if (!supported)
                     MaterialBanner(
                       content: Text(
-                        capabilities?.subtreeDiagnostic ??
-                            strings.text(
-                              '시스템 Git에서 subtree를 사용할 수 없습니다.',
-                              'Subtree is unavailable in the system Git installation.',
-                            ),
+                        '${strings.subtreeUnavailable}${capabilities?.subtreeDiagnostic == null ? '' : '\n${capabilities!.subtreeDiagnostic}'}',
                       ),
                       actions: const [SizedBox.shrink()],
                     ),
@@ -5422,8 +5397,8 @@ class _SubtreeManagerDialogState extends ConsumerState<_SubtreeManagerDialog> {
                         child: TextField(
                           controller: prefix,
                           onChanged: (_) => setState(() {}),
-                          decoration: const InputDecoration(
-                            labelText: 'Prefix',
+                          decoration: InputDecoration(
+                            labelText: strings.subtreePrefix,
                           ),
                         ),
                       ),
@@ -5443,7 +5418,9 @@ class _SubtreeManagerDialogState extends ConsumerState<_SubtreeManagerDialog> {
                         child: TextField(
                           controller: reference,
                           onChanged: (_) => setState(() {}),
-                          decoration: const InputDecoration(labelText: 'Ref'),
+                          decoration: InputDecoration(
+                            labelText: strings.subtreeRef,
+                          ),
                         ),
                       ),
                     ],
@@ -5454,7 +5431,7 @@ class _SubtreeManagerDialogState extends ConsumerState<_SubtreeManagerDialog> {
                     value: squash,
                     onChanged: (value) =>
                         setState(() => squash = value ?? true),
-                    title: const Text('Squash'),
+                    title: Text(strings.subtreeSquash),
                   ),
                   Row(
                     children: [
@@ -5485,9 +5462,7 @@ class _SubtreeManagerDialogState extends ConsumerState<_SubtreeManagerDialog> {
                         onPressed: operationId == null && _formEntry() != null
                             ? _register
                             : null,
-                        child: Text(
-                          strings.text('기존 Subtree 등록', 'Register existing'),
-                        ),
+                        child: Text(strings.registerExistingSubtree),
                       ),
                     ],
                   ),
@@ -5500,7 +5475,7 @@ class _SubtreeManagerDialogState extends ConsumerState<_SubtreeManagerDialog> {
                             leading: const Icon(Icons.account_tree_outlined),
                             title: Text(entry.prefix),
                             subtitle: Text(
-                              '${entry.repository} · ${entry.reference}${entry.squash ? ' · squash' : ''}',
+                              '${entry.repository} · ${entry.reference}${entry.squash ? ' · ${strings.subtreeSquashShort}' : ''}',
                             ),
                             trailing: PopupMenuButton<String>(
                               enabled: supported && operationId == null,
@@ -5513,23 +5488,23 @@ class _SubtreeManagerDialogState extends ConsumerState<_SubtreeManagerDialog> {
                                 ),
                                 _ => _forget(entry),
                               },
-                              itemBuilder: (_) => const [
+                              itemBuilder: (_) => [
                                 PopupMenuItem(
                                   value: 'pull',
-                                  child: Text('Pull'),
+                                  child: Text(strings.pullSubtree),
                                 ),
                                 PopupMenuItem(
                                   value: 'push',
-                                  child: Text('Push…'),
+                                  child: Text(strings.pushSubtree),
                                 ),
                                 PopupMenuItem(
                                   value: 'split',
-                                  child: Text('Split…'),
+                                  child: Text(strings.splitSubtree),
                                 ),
-                                PopupMenuDivider(),
+                                const PopupMenuDivider(),
                                 PopupMenuItem(
                                   value: 'forget',
-                                  child: Text('Forget'),
+                                  child: Text(strings.forgetSubtree),
                                 ),
                               ],
                             ),
