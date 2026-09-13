@@ -15,7 +15,7 @@ See the [current feature list](docs/features.md) for the implemented workflows, 
 - Manage remotes, fetch, pull, push, select an upstream, and push with `--force-with-lease`.
 - Inspect and edit repository or global Git configuration with inherited-value origins and sensitive-value masking.
 - Merge, rebase, interactive rebase, and manage stashes.
-- Lazily inspect and manage submodules, and run registered subtree add/pull/push/split workflows with squash controls.
+- Lazily inspect and manage submodules, and run registered subtree add/pull/push/split workflows with squash controls through GitFront's pinned official helper.
 - Resolve text conflicts in a three-way editor or open files with VS Code, the system default app, a configured Git mergetool, or a custom executable.
 - Restore recent repositories, open tabs, active tab, panel sizing, theme, language, and external-editor preferences.
 - Check and apply VeloPack updates from GitHub Releases in packaged builds.

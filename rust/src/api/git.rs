@@ -23,6 +23,8 @@ use std::time::Duration;
 use uuid::Uuid;
 
 const MAX_RENDER_BYTES: u64 = 5 * 1024 * 1024;
+const BUNDLED_GIT_SUBTREE: &str =
+    include_str!("../../../assets/third_party/git-subtree/git-subtree.sh");
 type HeadInformation = (Option<String>, Option<String>, Option<String>, i64, i64);
 
 static GENERATIONS: Lazy<Mutex<HashMap<String, u64>>> = Lazy::new(|| Mutex::new(HashMap::new()));
@@ -3441,7 +3443,6 @@ pub fn run_subtree_operation(
         SubtreeAction::Split => "split",
     };
     let mut args = vec![
-        "subtree".to_owned(),
         action.to_owned(),
         "--prefix".to_owned(),
         options.prefix.clone(),
@@ -3481,12 +3482,9 @@ pub fn run_subtree_operation(
         progress: None,
         result: None,
     });
-    let mut command = Command::new("git");
+    let mut command = subtree_command(Some(&path))?;
     hide_console_window(&mut command);
-    configure_subtree_environment(&mut command);
     command
-        .arg("-C")
-        .arg(&path)
         .args(args)
         .env("GIT_TERMINAL_PROMPT", "0")
         .stdout(Stdio::piped())
@@ -3672,14 +3670,9 @@ fn run_subtree_capture(
     path: Option<&str>,
     arguments: Vec<String>,
 ) -> Result<std::process::Output, String> {
-    let mut command = Command::new("git");
+    let mut command = subtree_command(path)?;
     hide_console_window(&mut command);
-    if let Some(path) = path {
-        command.arg("-C").arg(path);
-    }
-    configure_subtree_environment(&mut command);
     command
-        .arg("subtree")
         .args(arguments)
         .env("GIT_TERMINAL_PROMPT", "0")
         .stdout(Stdio::piped())
@@ -3688,22 +3681,98 @@ fn run_subtree_capture(
         .map_err(|error| format!("Git subtree could not be started: {error}"))
 }
 
-fn configure_subtree_environment(command: &mut Command) {
+#[cfg(windows)]
+fn subtree_command(path: Option<&str>) -> Result<Command, String> {
     let mut probe = Command::new("git");
     hide_console_window(&mut probe);
-    if let Ok(output) = probe.arg("--exec-path").output()
-        && output.status.success()
-    {
-        let exec_path = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-        if !exec_path.is_empty() {
-            let current = std::env::var_os("PATH").unwrap_or_default();
-            let mut paths = vec![PathBuf::from(&exec_path)];
-            paths.extend(std::env::split_paths(&current));
-            if let Ok(joined) = std::env::join_paths(paths) {
-                command.env("PATH", joined).env("GIT_EXEC_PATH", exec_path);
-            }
-        }
+    let output = probe
+        .arg("--exec-path")
+        .output()
+        .map_err(|error| format!("Git was not found: {error}"))?;
+    if !output.status.success() {
+        return Err(redact(String::from_utf8_lossy(&output.stderr).trim()));
     }
+    let exec_path = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
+    let mingw = exec_path
+        .ancestors()
+        .find(|candidate| {
+            candidate
+                .file_name()
+                .and_then(|value| value.to_str())
+                .is_some_and(|value| {
+                    value.eq_ignore_ascii_case("mingw64") || value.eq_ignore_ascii_case("mingw32")
+                })
+        })
+        .ok_or_else(|| {
+            format!(
+                "GitFront's bundled subtree requires Git for Windows. Detected exec path: {}",
+                display_path(&exec_path)
+            )
+        })?;
+    let root = mingw.parent().ok_or_else(|| {
+        format!(
+            "Could not determine the Git for Windows installation from {}.",
+            display_path(&exec_path)
+        )
+    })?;
+    let shell = [root.join("bin/sh.exe"), root.join("usr/bin/sh.exe")]
+        .into_iter()
+        .find(|candidate| candidate.is_file())
+        .ok_or_else(|| {
+            format!(
+                "Git for Windows Bash was not found under {}.",
+                display_path(root)
+            )
+        })?;
+    let mingw_name = mingw
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("mingw64");
+    let git_exec_path = format!("/{mingw_name}/libexec/git-core");
+    let script = bundled_subtree_script()?;
+    let mut command = Command::new(shell);
+    command.arg(script).env("GIT_EXEC_PATH", git_exec_path);
+    if let Some(path) = path {
+        command.current_dir(path);
+    }
+    Ok(command)
+}
+
+#[cfg(not(windows))]
+fn subtree_command(path: Option<&str>) -> Result<Command, String> {
+    let mut command = Command::new("git");
+    if let Some(path) = path {
+        command.arg("-C").arg(path);
+    }
+    command.arg("subtree");
+    Ok(command)
+}
+
+#[cfg(windows)]
+fn bundled_subtree_script() -> Result<PathBuf, String> {
+    let digest = format!("{:x}", Sha256::digest(BUNDLED_GIT_SUBTREE.as_bytes()));
+    let directory = std::env::temp_dir()
+        .join("GitFront")
+        .join("helpers")
+        .join(&digest[..16]);
+    fs::create_dir_all(&directory)
+        .map_err(|error| format!("Could not prepare GitFront's subtree helper: {error}"))?;
+    let script = directory.join("git-subtree.sh");
+    let valid = fs::read(&script)
+        .map(|contents| contents == BUNDLED_GIT_SUBTREE.as_bytes())
+        .unwrap_or(false);
+    if !valid {
+        let temporary = directory.join(format!("git-subtree-{}.tmp", Uuid::new_v4().simple()));
+        fs::write(&temporary, BUNDLED_GIT_SUBTREE)
+            .map_err(|error| format!("Could not extract GitFront's subtree helper: {error}"))?;
+        if script.exists() {
+            fs::remove_file(&script)
+                .map_err(|error| format!("Could not replace GitFront's subtree helper: {error}"))?;
+        }
+        fs::rename(&temporary, &script)
+            .map_err(|error| format!("Could not activate GitFront's subtree helper: {error}"))?;
+    }
+    Ok(script)
 }
 
 fn run_config_mutation(
@@ -4563,6 +4632,82 @@ mod tests {
             gitignore_contents(&GitignoreTemplate::Rust)
                 .unwrap()
                 .contains("/target/")
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn bundled_subtree_helper_is_available() {
+        let output = run_subtree_capture(None, vec!["-h".to_owned()])
+            .expect("GitFront should extract and start its bundled subtree helper");
+        assert!(
+            output.status.success() || output.status.code() == Some(129),
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn bundled_subtree_adds_a_local_repository() {
+        let temporary = tempfile::tempdir().expect("temporary subtree repositories");
+        let child = temporary.path().join("child");
+        let parent = temporary.path().join("parent");
+        fs::create_dir_all(&child).expect("child directory");
+        fs::create_dir_all(&parent).expect("parent directory");
+        let git = |directory: &Path, arguments: &[&str]| {
+            let output = Command::new("git")
+                .arg("-C")
+                .arg(directory)
+                .args(arguments)
+                .output()
+                .expect("Git fixture command");
+            assert!(
+                output.status.success(),
+                "{}{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        };
+        for directory in [&child, &parent] {
+            git(directory, &["init", "-b", "main"]);
+            git(directory, &["config", "user.name", "GitFront Test"]);
+            git(
+                directory,
+                &["config", "user.email", "gitfront@example.invalid"],
+            );
+        }
+        fs::write(child.join("library.txt"), "bundled subtree\n").expect("child file");
+        git(&child, &["add", "library.txt"]);
+        git(&child, &["commit", "-m", "child"]);
+        fs::write(parent.join("README.md"), "parent\n").expect("parent file");
+        git(&parent, &["add", "README.md"]);
+        git(&parent, &["commit", "-m", "parent"]);
+        git(&parent, &["config", "protocol.file.allow", "always"]);
+
+        let output = run_subtree_capture(
+            parent.to_str(),
+            vec![
+                "add".to_owned(),
+                "--prefix".to_owned(),
+                "vendor/child".to_owned(),
+                child.to_string_lossy().into_owned(),
+                "main".to_owned(),
+                "--squash".to_owned(),
+            ],
+        )
+        .expect("bundled subtree add should start");
+        assert!(
+            output.status.success(),
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            fs::read_to_string(parent.join("vendor/child/library.txt"))
+                .expect("imported subtree file"),
+            "bundled subtree\n"
         );
     }
 }

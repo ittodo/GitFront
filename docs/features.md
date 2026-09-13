@@ -21,7 +21,7 @@
 | Git 설정 | 지원 | 저장소·전역 config 조회/편집, 상속 출처, 고급 key/value와 민감 값 보호 |
 | Sparse checkout | 부분 지원 | cone-mode 디렉터리 설정·변경·비활성화 지원, non-cone pattern은 제외 |
 | Submodule | 지원 | 지연 목록, 초기화, 기록/원격 업데이트, 동기화, 새 탭 열기, 추가와 안전 제거 |
-| Subtree | 지원 | 로컬 연결 등록, add/pull/push/split, squash 선택, 진행 로그와 취소 |
+| Subtree | 지원 | 공식 Git 소스에서 고정한 내장 helper, 로컬 연결 등록, add/pull/push/split, squash 선택, 진행 로그와 취소 |
 | 고급 이력 작업 | 지원 | merge, rebase, interactive rebase, cherry-pick, revert, reset |
 | stash | 지원 | 생성, 목록, diff, apply, pop, drop |
 | 충돌 해결 | 지원 | 텍스트 3-way 편집, ours/theirs/both, 직접 편집, 외부 도구 |
@@ -302,7 +302,7 @@
 | Git Bash 기능 | GitFront 현재 상태 |
 | --- | --- |
 | `git submodule` | **지원** 재귀 상태 조회, 초기화, 기록된 커밋/원격 업데이트, URL 동기화, 추가, 새 탭 열기와 확인 기반 제거를 제공한다. |
-| `git subtree` | **지원** 로컬 연결 등록과 add/pull/push/split, squash 선택, 진행 로그와 취소를 제공한다. 시스템 Git에 subtree 명령이 필요하다. |
+| `git subtree` | **지원** GitFront가 공식 Git 소스의 고정된 subtree helper를 내장한다. 시스템 Git의 subtree 설치가 빠졌거나 손상돼도 Git for Windows의 Git·Bash를 이용해 add/pull/push/split을 실행한다. |
 | `git worktree` | **미지원** 추가 checkout 생성·이동·삭제 UI가 없다. |
 | Git LFS 명령 | **미지원** LFS 추적 규칙, pull/push, lock 관리 UI가 없다. 시스템 Git 동작 중 LFS hook이 실행되는 것은 막지 않는다. |
 | `git gc`, `maintenance`, `repack`, `prune` | **미지원** 저장소 최적화와 정리 UI가 없다. |
