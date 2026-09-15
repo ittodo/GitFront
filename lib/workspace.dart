@@ -7179,7 +7179,7 @@ class _GraphDot extends StatefulWidget {
 }
 
 class _GraphDotState extends State<_GraphDot> {
-  Timer? _hoverTimer;
+  bool _lookupInProgress = false;
   ContainingBranches? _containing;
 
   @override
@@ -7187,31 +7187,36 @@ class _GraphDotState extends State<_GraphDot> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.oid != widget.oid ||
         oldWidget.repositoryPath != widget.repositoryPath) {
-      _hoverTimer?.cancel();
+      _lookupInProgress = false;
       _containing = null;
     }
   }
 
-  @override
-  void dispose() {
-    _hoverTimer?.cancel();
-    super.dispose();
-  }
-
-  void _scheduleLookup() {
-    if (_containing != null || _hoverTimer?.isActive == true) return;
-    _hoverTimer = Timer(const Duration(milliseconds: 250), () async {
-      try {
-        final result = await git_api.getContainingBranches(
-          path: widget.repositoryPath,
-          oid: widget.oid,
-          displayLimit: 8,
-        );
-        if (mounted) setState(() => _containing = result);
-      } catch (_) {
-        // A tooltip lookup must never interrupt log navigation.
+  Future<void> _scheduleLookup() async {
+    if (_containing != null || _lookupInProgress) return;
+    _lookupInProgress = true;
+    final requestedOid = widget.oid;
+    final requestedPath = widget.repositoryPath;
+    try {
+      final result = await git_api.getContainingBranches(
+        path: requestedPath,
+        oid: requestedOid,
+        displayLimit: 8,
+      );
+      if (mounted &&
+          widget.oid == requestedOid &&
+          widget.repositoryPath == requestedPath) {
+        setState(() => _containing = result);
       }
-    });
+    } catch (_) {
+      // A tooltip lookup must never interrupt log navigation.
+    } finally {
+      if (mounted &&
+          widget.oid == requestedOid &&
+          widget.repositoryPath == requestedPath) {
+        _lookupInProgress = false;
+      }
+    }
   }
 
   @override
@@ -7241,7 +7246,6 @@ class _GraphDotState extends State<_GraphDot> {
             ),
       child: MouseRegion(
         onEnter: (_) => _scheduleLookup(),
-        onExit: (_) => _hoverTimer?.cancel(),
         child: SizedBox(
           width: 32,
           child: Align(
