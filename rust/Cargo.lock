@@ -1288,7 +1288,7 @@ dependencies = [
 
 [[package]]
 name = "rust_lib_gitfront_preview"
-version = "0.0.2"
+version = "0.0.3"
 dependencies = [
  "flutter_rust_bridge",
  "git2",

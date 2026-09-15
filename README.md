@@ -69,14 +69,14 @@ Install VeloPack's `vpk` tool and run:
 
 ```powershell
 dotnet tool install --global vpk
-./scripts/package_windows.ps1 -Version 0.0.2
+./scripts/package_windows.ps1 -Version 0.0.3
 ```
 
 To enable GitHub Releases update checks in the packaged build, provide the repository URL:
 
 ```powershell
 ./scripts/package_windows.ps1 `
-  -Version 0.0.2 `
+  -Version 0.0.3 `
   -GitHubRepository "https://github.com/owner/repository"
 ```
 
