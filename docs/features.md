@@ -14,7 +14,7 @@
 | --- | --- | --- |
 | 여러 저장소 | 지원 | 새 저장소 생성, 로컬 열기, 고급 URL 복제, 앱 내부 탭, 최근 저장소와 열린 탭 복원 |
 | 변경 파일과 diff | 지원 | staged/unstaged/untracked/conflict, 파일·hunk stage/unstage, unified/side-by-side diff |
-| 커밋과 로그 | 지원 | 커밋 작성, 200개 단위 로그, 그래프, 상세 diff, ref 배지와 커밋 작업 메뉴 |
+| 커밋과 로그 | 지원 | 커밋 작성, 200개 단위 로그, 범위·텍스트·경로 필터, 포함 브랜치, 그래프, 상세 diff, ref 배지와 커밋 작업 메뉴 |
 | 로컬 브랜치 | 지원 | 생성, 전환, 이름 변경, 삭제, merge, rebase |
 | 원격 브랜치 | 부분 지원 | remote별 계층 목록, tracking branch 생성·checkout과 커밋 배지를 지원하지만 원격 삭제는 없음 |
 | 원격 작업 | 지원 | remote 관리, clone, fetch, pull, push, 선택적 upstream 설정, force-with-lease |
@@ -76,7 +76,9 @@
 ## 커밋 로그와 ref
 
 - **지원** topological + time 순서로 커밋을 읽고 그래프 lane, 작성자, 시간, 제목, 축약 SHA를 표시한다.
-- **지원** 처음 200개를 읽고 스크롤 끝에서 200개씩 추가한다. 커서 캐시가 이전 offset을 다시 순회하지 않고 페이지 사이 그래프 lane을 이어 간다.
+- **지원** 시스템 Git의 revision engine으로 처음 200개를 읽고 스크롤 끝에서 200개씩 추가한다. 현재 브랜치, 특정 로컬·원격 브랜치·태그, 모든 ref 범위를 선택할 수 있다.
+- **지원** 메시지·작성자·이메일·SHA 검색과 경로 필터를 결합한다. 텍스트 검색용 SQLite FTS 인덱스는 백그라운드에서 점진 생성하며 진행 상태를 표시한다.
+- **지원** 커밋 점에 잠시 마우스를 올리거나 커밋을 선택하면 해당 커밋을 포함하는 로컬·원격 브랜치를 계산한다. 직접 가리키는 ref 배지는 별도로 유지한다.
 - **지원** 커밋 선택 시 전체 메시지, 부모, 변경 파일과 커밋 diff를 오른쪽 패널에 표시한다.
 - **지원** 동일 커밋을 가리키는 `HEAD`, 로컬 브랜치, 원격 브랜치, 태그를 종류별 아이콘·색상·텍스트 배지로 표시한다.
 - **지원** ref는 `HEAD → 로컬 브랜치 → 원격 브랜치 → 태그` 순서로 정렬한다.
@@ -200,8 +202,9 @@
 - 로컬·원격 브랜치도 250개 단위로 전달하고 왼쪽 목록의 스크롤 위치에 따라 이어서 읽는다. 현재 브랜치는 정렬상 첫 페이지에 유지한다.
 - 변경 파일, 브랜치·원격·stash, 커밋 로그, diff 본문은 화면에 보이는 행 중심의 가상 목록으로 렌더링한다.
 - 초기 화면과 저장소 개요를 먼저 표시하고 커밋 로그는 비동기로 채운다. 큰 저장소의 topological 정렬이 진행 중이어도 창과 변경 파일 화면을 막지 않는다.
-- 로그 reader는 첫 요청에서 전체 커밋 ID를 모으지 않고 화면의 200개와 다음 페이지 확인용 1개만 전진한다. 같은 reader를 다음 페이지에서도 이어 사용하며 메타데이터·ref·그래프 lane도 보이는 범위만 생성한다.
-- 저장소별 변경·로그 캐시는 최근 8개 저장소로 제한하고 HEAD 또는 working-tree generation이 바뀌면 오래된 커서를 거부한다.
+- 일반 로그는 시스템 Git에서 화면의 200개와 다음 페이지 확인용 1개 OID만 받고, 메타데이터·직접 ref·그래프 lane은 보이는 범위만 `git2`로 생성한다.
+- 영구 로그 캐시는 커밋 메시지·작성자 검색 인덱스만 저장한다. ref 도달 관계, lane, 경로 결과와 diff는 메모리에만 두며 기본 총 한도는 512MB, 미사용 보존 기간은 30일이다.
+- ref·shallow·replace/graft 변화를 fingerprint로 감지해 오래된 커서를 거부한다. linked worktree에서는 실제 gitdir과 shared common directory도 감시한다.
 - 수백 개 브랜치가 있는 저장소에서 모든 브랜치의 graph ahead/behind를 매번 계산하지 않는다.
 - 파일 감시 이벤트는 300ms 동안 모아서 중복 경로를 제거한 뒤 처리한다.
 - 일반 파일 변경은 working tree만 갱신하고, `.git` 이력 변경이 있을 때 필요한 로그를 다시 읽는다.
@@ -251,8 +254,8 @@
 | --- | --- |
 | `git diff <임의 ref>..<임의 ref>` | **제한** 작업 트리/index, 선택 커밋 상세, 선택 커밋 → 현재 HEAD 비교만 제공한다. 두 임의 ref를 고르는 화면은 없다. |
 | `git diff --word-diff`, `--stat`, `--name-only`, whitespace 옵션 | **미지원** unified와 side-by-side 본문 보기에 집중한다. |
-| `git log`의 author/date/message/path/branch 필터 | **미지원** 전체 topological 로그를 페이지 단위로 읽지만 검색·필터 UI는 없다. |
-| `git log --all`, `--first-parent`, `--merges` 등 traversal 선택 | **미지원** 로그 순서와 탐색 범위를 사용자가 변경할 수 없다. |
+| `git log`의 author/date/message/path/branch 필터 | **부분 지원** 메시지·작성자·이메일·SHA와 경로, 현재/특정 ref/전체 ref 범위를 지원하지만 날짜 필터는 아직 없다. |
+| `git log --all`, `--first-parent`, `--merges` 등 traversal 선택 | **부분 지원** 전체 refs 범위는 지원하지만 first-parent와 merge-only 선택은 아직 없다. |
 | `git reflog` | **미지원** 이동하거나 삭제된 HEAD·branch 이력 복구 화면이 없다. |
 | `git show`, `git grep`, `git shortlog`, `git describe` | **부분 대체** 선택 커밋 상세와 diff는 볼 수 있지만 각 명령의 전체 옵션과 별도 UI는 없다. |
 | `git blame` | **미지원** 줄별 작성 커밋과 작성자 추적 UI가 없다. |
@@ -265,7 +268,7 @@
 | --- | --- |
 | remote-tracking branch에서 로컬 tracking branch 생성 | **지원** remote별 목록에서 로컬 이름을 지정해 생성하고 checkout한다. |
 | `git branch --set-upstream-to`, `--unset-upstream` | **제한** 최초 push 때 remote와 branch를 선택할 수 있지만 기존 upstream 변경·해제 전용 UI는 없다. |
-| `git branch --merged`, `--contains`, `--points-at` | **미지원** 브랜치 검색과 관계 필터가 없다. |
+| `git branch --merged`, `--contains`, `--points-at` | **부분 지원** 선택 커밋을 포함하는 로컬·원격 브랜치는 조회하지만 merged/points-at 전용 목록 필터는 없다. |
 | orphan branch와 강제 branch 재지정 | **미지원** `git switch --orphan`, `git branch -f`에 해당하는 UI가 없다. |
 | 원격 브랜치 삭제 | **미지원** `git push <remote> --delete <branch>`에 해당하는 메뉴가 없다. |
 | 선택 remote/refspec push | **제한** 현재 브랜치를 기본 upstream으로 push하는 흐름만 제공한다. |

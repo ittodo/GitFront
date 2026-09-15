@@ -1,6 +1,7 @@
 use rust_lib_gitfront_preview::api::git::{
-    list_commits_cursor, open_repository_paged, refresh_repository_paged,
+    open_repository_paged, query_commits, refresh_repository_paged,
 };
+use rust_lib_gitfront_preview::api::models::{HistoryQuery, HistoryScope};
 use std::env;
 use std::time::Instant;
 
@@ -24,7 +25,17 @@ fn probe(path: &str) -> Result<(), String> {
     let overview_ms = started.elapsed().as_millis();
 
     let started = Instant::now();
-    let history = list_commits_cursor(opened.snapshot.workdir.clone(), None, 200)?;
+    let history = query_commits(
+        opened.snapshot.workdir.clone(),
+        HistoryQuery {
+            scope: HistoryScope::CurrentBranch,
+            selected_ref: None,
+            text: String::new(),
+            path: None,
+        },
+        None,
+        200,
+    )?;
     let history_ms = started.elapsed().as_millis();
 
     let started = Instant::now();
@@ -39,7 +50,7 @@ fn probe(path: &str) -> Result<(), String> {
         warm_refresh_ms,
         opened.changes.total_files,
         refreshed.branches.total_branches,
-        history.total_commits,
+        history.matched_count,
         history.commits.len(),
     );
     Ok(())

@@ -3,20 +3,21 @@ use rust_lib_gitfront_preview::api::git::{
     checkout_commit, cherry_pick_commit, clone_repository, clone_repository_advanced,
     compare_commits, control_cherry_pick, control_merge, control_revert, create_branch,
     create_commit, create_commit_with_options, create_tag, create_tracking_branch,
-    disable_sparse_checkout, fetch_all, get_worktree_diff, initialize_repository, intent_to_add,
-    list_branches_cursor, list_changes_cursor, list_commits, list_commits_cursor,
-    list_remote_details, list_submodules, list_submodules_cursor, list_subtrees,
-    load_commit_defaults, load_conflict, merge_branch, open_repository, preview_remove_submodule,
-    preview_reset, push_current, push_current_to, read_git_config, read_sparse_checkout,
-    refresh_repository_paged, refresh_working_tree, register_subtree, remove_remote,
-    remove_submodule, rename_remote, reset_to_commit, revert_commit, set_git_config,
-    set_sparse_checkout, stage_paths, stash_apply, stash_save, switch_branch,
-    unset_git_config_value, update_remote,
+    disable_sparse_checkout, fetch_all, get_containing_branches, get_worktree_diff,
+    initialize_repository, intent_to_add, list_branches_cursor, list_changes_cursor, list_commits,
+    list_commits_cursor, list_remote_details, list_submodules, list_submodules_cursor,
+    list_subtrees, load_commit_defaults, load_conflict, merge_branch, open_repository,
+    preview_remove_submodule, preview_reset, push_current, push_current_to, query_commits,
+    read_git_config, read_sparse_checkout, refresh_repository_paged, refresh_working_tree,
+    register_subtree, remove_remote, remove_submodule, rename_remote, reset_to_commit,
+    revert_commit, set_git_config, set_sparse_checkout, stage_paths, stash_apply, stash_save,
+    switch_branch, unset_git_config_value, update_remote,
 };
 use rust_lib_gitfront_preview::api::models::{
     ChangeKind, CherryPickApplicability, CloneOptions, CommitOptions, CommitReferenceKind,
-    CommitSigningMode, GitConfigScope, GitignoreTemplate, MergeControl, RepositoryInitOptions,
-    RepositoryState, ResetMode, SequenceControl, SubmoduleState, SubtreeInfo,
+    CommitSigningMode, GitConfigScope, GitignoreTemplate, HistoryQuery, HistoryScope, MergeControl,
+    RepositoryInitOptions, RepositoryState, ResetMode, SequenceControl, SubmoduleState,
+    SubtreeInfo,
 };
 use std::fs;
 use std::io::Write;
@@ -755,6 +756,126 @@ fn cursor_history_is_stable_and_rejects_changed_head() {
     git(directory.path(), &["commit", "-am", "new head"]);
     let error = list_commits_cursor(path, Some(cursor), 2).expect_err("stale cursor");
     assert!(error.contains("history changed"));
+}
+
+#[test]
+fn history_query_supports_current_selected_all_and_path_scopes() {
+    let directory = repository();
+    let initial = git_text(directory.path(), &["rev-parse", "HEAD"]);
+    git(directory.path(), &["switch", "-c", "feature"]);
+    fs::write(directory.path().join("feature.txt"), "feature\n").expect("feature fixture");
+    git(directory.path(), &["add", "feature.txt"]);
+    git(directory.path(), &["commit", "-m", "feature only"]);
+    let feature = git_text(directory.path(), &["rev-parse", "HEAD"]);
+    git(directory.path(), &["switch", "main"]);
+    fs::write(directory.path().join("main.txt"), "main\n").expect("main fixture");
+    git(directory.path(), &["add", "main.txt"]);
+    git(directory.path(), &["commit", "-m", "main only"]);
+    let path = directory.path().to_string_lossy().into_owned();
+
+    let current = query_commits(
+        path.clone(),
+        HistoryQuery {
+            scope: HistoryScope::CurrentBranch,
+            selected_ref: None,
+            text: String::new(),
+            path: None,
+        },
+        None,
+        200,
+    )
+    .expect("current history");
+    assert!(!current.commits.iter().any(|commit| commit.oid == feature));
+
+    let selected = query_commits(
+        path.clone(),
+        HistoryQuery {
+            scope: HistoryScope::SelectedRef,
+            selected_ref: Some("refs/heads/feature".to_owned()),
+            text: String::new(),
+            path: None,
+        },
+        None,
+        200,
+    )
+    .expect("selected history");
+    assert_eq!(
+        selected.commits.first().map(|commit| commit.oid.as_str()),
+        Some(feature.as_str())
+    );
+
+    let all = query_commits(
+        path.clone(),
+        HistoryQuery {
+            scope: HistoryScope::AllRefs,
+            selected_ref: None,
+            text: String::new(),
+            path: None,
+        },
+        None,
+        200,
+    )
+    .expect("all history");
+    assert!(all.commits.iter().any(|commit| commit.oid == feature));
+    assert_eq!(
+        all.commits
+            .iter()
+            .filter(|commit| commit.oid == initial)
+            .count(),
+        1
+    );
+
+    let by_path = query_commits(
+        path,
+        HistoryQuery {
+            scope: HistoryScope::AllRefs,
+            selected_ref: None,
+            text: String::new(),
+            path: Some("feature.txt".to_owned()),
+        },
+        None,
+        200,
+    )
+    .expect("path history");
+    assert_eq!(by_path.commits.len(), 1);
+    assert_eq!(by_path.commits[0].oid, feature);
+}
+
+#[test]
+fn containing_branches_reports_local_and_remote_reachability() {
+    let directory = repository();
+    let initial = git_text(directory.path(), &["rev-parse", "HEAD"]);
+    git(directory.path(), &["branch", "topic"]);
+    git(
+        directory.path(),
+        &["update-ref", "refs/remotes/origin/main", &initial],
+    );
+    let result =
+        get_containing_branches(directory.path().to_string_lossy().into_owned(), initial, 0)
+            .expect("containing branches");
+    assert!(result.local.contains(&"main".to_owned()));
+    assert!(result.local.contains(&"topic".to_owned()));
+    assert!(result.remote.contains(&"origin/main".to_owned()));
+}
+
+#[test]
+fn history_query_combines_sha_and_path_filters() {
+    let directory = repository();
+    let oid = git_text(directory.path(), &["rev-parse", "HEAD"]);
+    let result = query_commits(
+        directory.path().to_string_lossy().into_owned(),
+        HistoryQuery {
+            scope: HistoryScope::CurrentBranch,
+            selected_ref: None,
+            text: oid[..10].to_owned(),
+            path: Some("notes.txt".to_owned()),
+        },
+        None,
+        200,
+    )
+    .expect("combined history filter");
+    assert_eq!(result.commits.len(), 1);
+    assert_eq!(result.commits[0].oid, oid);
 }
 
 #[test]

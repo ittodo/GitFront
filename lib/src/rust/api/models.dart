@@ -7,7 +7,7 @@ import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `GitError`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
 
 class BranchInfo {
   final String name;
@@ -362,6 +362,37 @@ class CommitPage {
           nextOffset == other.nextOffset;
 }
 
+class CommitQueryPage {
+  final List<CommitSummary> commits;
+  final String? nextCursor;
+  final int matchedCount;
+  final HistoryIndexProgress indexing;
+
+  const CommitQueryPage({
+    required this.commits,
+    this.nextCursor,
+    required this.matchedCount,
+    required this.indexing,
+  });
+
+  @override
+  int get hashCode =>
+      commits.hashCode ^
+      nextCursor.hashCode ^
+      matchedCount.hashCode ^
+      indexing.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CommitQueryPage &&
+          runtimeType == other.runtimeType &&
+          commits == other.commits &&
+          nextCursor == other.nextCursor &&
+          matchedCount == other.matchedCount &&
+          indexing == other.indexing;
+}
+
 class CommitReference {
   final String name;
   final String fullName;
@@ -526,6 +557,37 @@ class ConflictRegion {
           base == other.base &&
           ours == other.ours &&
           theirs == other.theirs;
+}
+
+class ContainingBranches {
+  final List<String> local;
+  final List<String> remote;
+  final int truncatedCount;
+  final String refsFingerprint;
+
+  const ContainingBranches({
+    required this.local,
+    required this.remote,
+    required this.truncatedCount,
+    required this.refsFingerprint,
+  });
+
+  @override
+  int get hashCode =>
+      local.hashCode ^
+      remote.hashCode ^
+      truncatedCount.hashCode ^
+      refsFingerprint.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ContainingBranches &&
+          runtimeType == other.runtimeType &&
+          local == other.local &&
+          remote == other.remote &&
+          truncatedCount == other.truncatedCount &&
+          refsFingerprint == other.refsFingerprint;
 }
 
 class DiffDocument {
@@ -863,6 +925,61 @@ class GraphLane {
           column == other.column &&
           parentColumns == other.parentColumns;
 }
+
+class HistoryIndexProgress {
+  final int indexedCommits;
+  final int totalCommits;
+  final bool complete;
+
+  const HistoryIndexProgress({
+    required this.indexedCommits,
+    required this.totalCommits,
+    required this.complete,
+  });
+
+  @override
+  int get hashCode =>
+      indexedCommits.hashCode ^ totalCommits.hashCode ^ complete.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is HistoryIndexProgress &&
+          runtimeType == other.runtimeType &&
+          indexedCommits == other.indexedCommits &&
+          totalCommits == other.totalCommits &&
+          complete == other.complete;
+}
+
+class HistoryQuery {
+  final HistoryScope scope;
+  final String? selectedRef;
+  final String text;
+  final String? path;
+
+  const HistoryQuery({
+    required this.scope,
+    this.selectedRef,
+    required this.text,
+    this.path,
+  });
+
+  @override
+  int get hashCode =>
+      scope.hashCode ^ selectedRef.hashCode ^ text.hashCode ^ path.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is HistoryQuery &&
+          runtimeType == other.runtimeType &&
+          scope == other.scope &&
+          selectedRef == other.selectedRef &&
+          text == other.text &&
+          path == other.path;
+}
+
+enum HistoryScope { currentBranch, selectedRef, allRefs }
 
 enum MergeControl { continue_, abort }
 

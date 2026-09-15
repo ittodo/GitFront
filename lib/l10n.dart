@@ -105,6 +105,36 @@ class GitFrontStrings {
   String get noTextualDiff => text('표시할 텍스트 차이가 없습니다', 'No textual diff');
   String get noDifferences => text('차이가 없습니다', 'No differences');
   String get noCommits => text('커밋이 없습니다', 'No commits');
+  String get historySearch =>
+      text('메시지, 작성자 또는 SHA 검색', 'Search message, author, or SHA');
+  String get historyPath => text('경로 필터', 'Path filter');
+  String get currentBranchHistory => text('현재 브랜치', 'Current branch');
+  String get selectedRefHistory => text('선택한 Ref', 'Selected ref');
+  String get allRefsHistory => text('모든 Ref', 'All refs');
+  String get chooseRef => text('Ref 선택', 'Choose ref');
+  String historyIndexProgress(int indexed, int total) => text(
+    '검색 인덱스 생성 중 $indexed / $total',
+    'Building search index $indexed / $total',
+  );
+  String get containingBranches => text('포함 브랜치', 'Containing branches');
+  String get localBranches => text('로컬', 'Local');
+  String get remoteBranches => text('원격', 'Remote');
+  String get noContainingBranches =>
+      text('포함하는 브랜치가 없습니다', 'No branch contains this commit');
+  String graphDotContainingTooltip(
+    int path,
+    List<String> local,
+    List<String> remote,
+    int truncated,
+  ) {
+    final names = [...local, ...remote];
+    final suffix = truncated > 0 ? ' +$truncated' : '';
+    return text(
+      '그래프 경로 $path\n포함 브랜치: ${names.join(', ')}$suffix',
+      'Graph path $path\nContaining branches: ${names.join(', ')}$suffix',
+    );
+  }
+
   String get graphLegend => text(
     '점 색상 = 그래프 경로 · 브랜치와 태그 = 배지',
     'Dot color = graph path · Branches and tags = badges',
@@ -133,6 +163,14 @@ class GitFrontStrings {
   String get confirm => text('확인', 'Confirm');
   String get close => text('닫기', 'Close');
   String get settings => text('설정', 'Settings');
+  String get historyCache => text('로그 검색 캐시', 'History search cache');
+  String get historyCacheDescription => text(
+    '커밋 메시지와 작성자 검색 인덱스만 로컬에 저장합니다.',
+    'Only the commit message and author search index is stored locally.',
+  );
+  String get cacheLimit => text('캐시 한도', 'Cache limit');
+  String get clearHistoryCache => text('로그 캐시 삭제', 'Clear history cache');
+  String get cacheCleared => text('로그 캐시를 삭제했습니다.', 'History cache cleared.');
   String get language => text('언어', 'Language');
   String get theme => text('테마', 'Theme');
   String get system => text('시스템', 'System');

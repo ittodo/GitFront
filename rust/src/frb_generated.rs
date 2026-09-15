@@ -28,7 +28,7 @@
 // Section: imports
 
 use flutter_rust_bridge::for_generated::byteorder::{NativeEndian, ReadBytesExt, WriteBytesExt};
-use flutter_rust_bridge::for_generated::{Lifetimeable, Lockable, transform_result_dco};
+use flutter_rust_bridge::for_generated::{transform_result_dco, Lifetimeable, Lockable};
 use flutter_rust_bridge::{Handler, IntoIntoDart};
 
 // Section: boilerplate
@@ -39,7 +39,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -906878838;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1388539916;
 
 // Section: executor
 
@@ -456,6 +456,71 @@ fn wire__crate__api__git__cherry_pick_commit_impl(
         },
     )
 }
+fn wire__crate__api__git__clear_all_history_caches_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "clear_all_history_caches",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok = crate::api::git::clear_all_history_caches()?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__git__clear_repository_history_cache_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "clear_repository_history_cache",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_path = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok = crate::api::git::clear_repository_history_cache(api_path)?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__crate__api__git__clone_repository_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -553,6 +618,43 @@ fn wire__crate__api__git__compare_commits_impl(
                 transform_result_sse::<_, String>((move || {
                     let output_ok =
                         crate::api::git::compare_commits(api_path, api_from_oid, api_to_oid)?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__git__configure_history_cache_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "configure_history_cache",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_max_megabytes = <u32>::sse_decode(&mut deserializer);
+            let api_development = <bool>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok = crate::api::git::configure_history_cache(
+                        api_max_megabytes,
+                        api_development,
+                    )?;
                     std::result::Result::Ok(output_ok)
                 })())
             }
@@ -1160,6 +1262,45 @@ fn wire__crate__api__git__get_commit_detail_impl(
         },
     )
 }
+fn wire__crate__api__git__get_containing_branches_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "get_containing_branches",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_path = <String>::sse_decode(&mut deserializer);
+            let api_oid = <String>::sse_decode(&mut deserializer);
+            let api_display_limit = <u32>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok = crate::api::git::get_containing_branches(
+                        api_path,
+                        api_oid,
+                        api_display_limit,
+                    )?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__crate__api__git__get_stash_diff_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -1321,6 +1462,38 @@ fn wire__crate__api__simple__greet_impl(
                 let output_ok = Ok::<_, ()>(crate::api::simple::greet(api_name))?;
                 std::result::Result::Ok(output_ok)
             })())
+        },
+    )
+}
+fn wire__crate__api__git__history_cache_size_bytes_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "history_cache_size_bytes",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok = crate::api::git::history_cache_size_bytes()?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
         },
     )
 }
@@ -1599,6 +1772,39 @@ fn wire__crate__api__git__list_commits_cursor_impl(
                 transform_result_sse::<_, String>((move || {
                     let output_ok =
                         crate::api::git::list_commits_cursor(api_path, api_cursor, api_limit)?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__git__list_history_refs_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "list_history_refs",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_path = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok = crate::api::git::list_history_refs(api_path)?;
                     std::result::Result::Ok(output_ok)
                 })())
             }
@@ -2199,6 +2405,43 @@ fn wire__crate__api__git__push_current_to_impl(
                         api_remote_branch,
                         api_force_with_lease,
                     )?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__git__query_commits_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "query_commits",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_path = <String>::sse_decode(&mut deserializer);
+            let api_query = <crate::api::models::HistoryQuery>::sse_decode(&mut deserializer);
+            let api_cursor = <Option<String>>::sse_decode(&mut deserializer);
+            let api_limit = <u32>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok =
+                        crate::api::git::query_commits(api_path, api_query, api_cursor, api_limit)?;
                     std::result::Result::Ok(output_ok)
                 })())
             }
@@ -3256,6 +3499,43 @@ fn wire__crate__api__git__update_submodules_impl(
         },
     )
 }
+fn wire__crate__api__git__watch_history_index_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "watch_history_index",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_path = <String>::sse_decode(&mut deserializer);
+            let api_sink = <StreamSink<
+                crate::api::models::HistoryIndexProgress,
+                flutter_rust_bridge::for_generated::SseCodec,
+            >>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok = crate::api::git::watch_history_index(api_path, api_sink)?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__crate__api__git__watch_repository_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -3301,6 +3581,19 @@ impl SseDecode for flutter_rust_bridge::for_generated::anyhow::Error {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut inner = <String>::sse_decode(deserializer);
         return flutter_rust_bridge::for_generated::anyhow::anyhow!("{}", inner);
+    }
+}
+
+impl SseDecode
+    for StreamSink<
+        crate::api::models::HistoryIndexProgress,
+        flutter_rust_bridge::for_generated::SseCodec,
+    >
+{
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <String>::sse_decode(deserializer);
+        return StreamSink::deserialize(inner);
     }
 }
 
@@ -3554,6 +3847,22 @@ impl SseDecode for crate::api::models::CommitPage {
     }
 }
 
+impl SseDecode for crate::api::models::CommitQueryPage {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_commits = <Vec<crate::api::models::CommitSummary>>::sse_decode(deserializer);
+        let mut var_nextCursor = <Option<String>>::sse_decode(deserializer);
+        let mut var_matchedCount = <u32>::sse_decode(deserializer);
+        let mut var_indexing = <crate::api::models::HistoryIndexProgress>::sse_decode(deserializer);
+        return crate::api::models::CommitQueryPage {
+            commits: var_commits,
+            next_cursor: var_nextCursor,
+            matched_count: var_matchedCount,
+            indexing: var_indexing,
+        };
+    }
+}
+
 impl SseDecode for crate::api::models::CommitReference {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -3664,6 +3973,22 @@ impl SseDecode for crate::api::models::ConflictRegion {
             base: var_base,
             ours: var_ours,
             theirs: var_theirs,
+        };
+    }
+}
+
+impl SseDecode for crate::api::models::ContainingBranches {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_local = <Vec<String>>::sse_decode(deserializer);
+        let mut var_remote = <Vec<String>>::sse_decode(deserializer);
+        let mut var_truncatedCount = <u32>::sse_decode(deserializer);
+        let mut var_refsFingerprint = <String>::sse_decode(deserializer);
+        return crate::api::models::ContainingBranches {
+            local: var_local,
+            remote: var_remote,
+            truncated_count: var_truncatedCount,
+            refs_fingerprint: var_refsFingerprint,
         };
     }
 }
@@ -3907,6 +4232,49 @@ impl SseDecode for crate::api::models::GraphLane {
         return crate::api::models::GraphLane {
             column: var_column,
             parent_columns: var_parentColumns,
+        };
+    }
+}
+
+impl SseDecode for crate::api::models::HistoryIndexProgress {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_indexedCommits = <u32>::sse_decode(deserializer);
+        let mut var_totalCommits = <u32>::sse_decode(deserializer);
+        let mut var_complete = <bool>::sse_decode(deserializer);
+        return crate::api::models::HistoryIndexProgress {
+            indexed_commits: var_indexedCommits,
+            total_commits: var_totalCommits,
+            complete: var_complete,
+        };
+    }
+}
+
+impl SseDecode for crate::api::models::HistoryQuery {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_scope = <crate::api::models::HistoryScope>::sse_decode(deserializer);
+        let mut var_selectedRef = <Option<String>>::sse_decode(deserializer);
+        let mut var_text = <String>::sse_decode(deserializer);
+        let mut var_path = <Option<String>>::sse_decode(deserializer);
+        return crate::api::models::HistoryQuery {
+            scope: var_scope,
+            selected_ref: var_selectedRef,
+            text: var_text,
+            path: var_path,
+        };
+    }
+}
+
+impl SseDecode for crate::api::models::HistoryScope {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <i32>::sse_decode(deserializer);
+        return match inner {
+            0 => crate::api::models::HistoryScope::CurrentBranch,
+            1 => crate::api::models::HistoryScope::SelectedRef,
+            2 => crate::api::models::HistoryScope::AllRefs,
+            _ => unreachable!("Invalid variant for HistoryScope: {}", inner),
         };
     }
 }
@@ -4874,112 +5242,133 @@ fn pde_ffi_dispatcher_primary_impl(
         9 => wire__crate__api__update__check_for_update_impl(port, ptr, rust_vec_len, data_len),
         10 => wire__crate__api__git__checkout_commit_impl(port, ptr, rust_vec_len, data_len),
         11 => wire__crate__api__git__cherry_pick_commit_impl(port, ptr, rust_vec_len, data_len),
-        12 => wire__crate__api__git__clone_repository_impl(port, ptr, rust_vec_len, data_len),
-        13 => {
+        12 => {
+            wire__crate__api__git__clear_all_history_caches_impl(port, ptr, rust_vec_len, data_len)
+        }
+        13 => wire__crate__api__git__clear_repository_history_cache_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        14 => wire__crate__api__git__clone_repository_impl(port, ptr, rust_vec_len, data_len),
+        15 => {
             wire__crate__api__git__clone_repository_advanced_impl(port, ptr, rust_vec_len, data_len)
         }
-        14 => wire__crate__api__git__compare_commits_impl(port, ptr, rust_vec_len, data_len),
-        15 => wire__crate__api__git__control_cherry_pick_impl(port, ptr, rust_vec_len, data_len),
-        16 => wire__crate__api__git__control_merge_impl(port, ptr, rust_vec_len, data_len),
-        17 => wire__crate__api__git__control_rebase_impl(port, ptr, rust_vec_len, data_len),
-        18 => wire__crate__api__git__control_revert_impl(port, ptr, rust_vec_len, data_len),
-        19 => wire__crate__api__git__create_branch_impl(port, ptr, rust_vec_len, data_len),
-        20 => wire__crate__api__git__create_commit_impl(port, ptr, rust_vec_len, data_len),
-        21 => wire__crate__api__git__create_commit_with_options_impl(
+        16 => wire__crate__api__git__compare_commits_impl(port, ptr, rust_vec_len, data_len),
+        17 => {
+            wire__crate__api__git__configure_history_cache_impl(port, ptr, rust_vec_len, data_len)
+        }
+        18 => wire__crate__api__git__control_cherry_pick_impl(port, ptr, rust_vec_len, data_len),
+        19 => wire__crate__api__git__control_merge_impl(port, ptr, rust_vec_len, data_len),
+        20 => wire__crate__api__git__control_rebase_impl(port, ptr, rust_vec_len, data_len),
+        21 => wire__crate__api__git__control_revert_impl(port, ptr, rust_vec_len, data_len),
+        22 => wire__crate__api__git__create_branch_impl(port, ptr, rust_vec_len, data_len),
+        23 => wire__crate__api__git__create_commit_impl(port, ptr, rust_vec_len, data_len),
+        24 => wire__crate__api__git__create_commit_with_options_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        22 => wire__crate__api__git__create_tag_impl(port, ptr, rust_vec_len, data_len),
-        23 => wire__crate__api__git__create_tracking_branch_impl(port, ptr, rust_vec_len, data_len),
-        24 => wire__crate__api__git__delete_local_branch_impl(port, ptr, rust_vec_len, data_len),
-        25 => {
+        25 => wire__crate__api__git__create_tag_impl(port, ptr, rust_vec_len, data_len),
+        26 => wire__crate__api__git__create_tracking_branch_impl(port, ptr, rust_vec_len, data_len),
+        27 => wire__crate__api__git__delete_local_branch_impl(port, ptr, rust_vec_len, data_len),
+        28 => {
             wire__crate__api__git__disable_sparse_checkout_impl(port, ptr, rust_vec_len, data_len)
         }
-        26 => wire__crate__api__git__discard_file_impl(port, ptr, rust_vec_len, data_len),
-        27 => wire__crate__api__update__download_update_impl(port, ptr, rust_vec_len, data_len),
-        28 => wire__crate__api__git__fetch_all_impl(port, ptr, rust_vec_len, data_len),
-        29 => wire__crate__api__git__forget_subtree_impl(port, ptr, rust_vec_len, data_len),
-        30 => wire__crate__api__git__get_cached_file_change_impl(port, ptr, rust_vec_len, data_len),
-        31 => wire__crate__api__git__get_commit_detail_impl(port, ptr, rust_vec_len, data_len),
-        32 => wire__crate__api__git__get_stash_diff_impl(port, ptr, rust_vec_len, data_len),
-        33 => wire__crate__api__git__get_worktree_diff_impl(port, ptr, rust_vec_len, data_len),
-        34 => wire__crate__api__git__git_capabilities_impl(port, ptr, rust_vec_len, data_len),
-        35 => wire__crate__api__git__git_version_impl(port, ptr, rust_vec_len, data_len),
-        37 => wire__crate__api__simple__init_app_impl(port, ptr, rust_vec_len, data_len),
-        38 => wire__crate__api__git__init_submodules_impl(port, ptr, rust_vec_len, data_len),
-        39 => wire__crate__api__git__initialize_repository_impl(port, ptr, rust_vec_len, data_len),
-        40 => wire__crate__api__git__intent_to_add_impl(port, ptr, rust_vec_len, data_len),
-        41 => wire__crate__api__git__list_branches_cursor_impl(port, ptr, rust_vec_len, data_len),
-        42 => wire__crate__api__git__list_changes_cursor_impl(port, ptr, rust_vec_len, data_len),
-        43 => wire__crate__api__git__list_commits_impl(port, ptr, rust_vec_len, data_len),
-        44 => wire__crate__api__git__list_commits_cursor_impl(port, ptr, rust_vec_len, data_len),
-        45 => wire__crate__api__git__list_remote_details_impl(port, ptr, rust_vec_len, data_len),
-        46 => wire__crate__api__git__list_submodules_impl(port, ptr, rust_vec_len, data_len),
-        47 => wire__crate__api__git__list_submodules_cursor_impl(port, ptr, rust_vec_len, data_len),
-        48 => wire__crate__api__git__list_subtrees_impl(port, ptr, rust_vec_len, data_len),
-        49 => wire__crate__api__git__load_commit_defaults_impl(port, ptr, rust_vec_len, data_len),
-        50 => wire__crate__api__git__load_conflict_impl(port, ptr, rust_vec_len, data_len),
-        51 => wire__crate__api__git__merge_branch_impl(port, ptr, rust_vec_len, data_len),
-        52 => wire__crate__api__git__open_external_file_impl(port, ptr, rust_vec_len, data_len),
-        53 => wire__crate__api__git__open_in_vscode_impl(port, ptr, rust_vec_len, data_len),
-        54 => wire__crate__api__git__open_repository_impl(port, ptr, rust_vec_len, data_len),
-        55 => wire__crate__api__git__open_repository_paged_impl(port, ptr, rust_vec_len, data_len),
-        56 => wire__crate__api__git__prepare_interactive_rebase_impl(
+        29 => wire__crate__api__git__discard_file_impl(port, ptr, rust_vec_len, data_len),
+        30 => wire__crate__api__update__download_update_impl(port, ptr, rust_vec_len, data_len),
+        31 => wire__crate__api__git__fetch_all_impl(port, ptr, rust_vec_len, data_len),
+        32 => wire__crate__api__git__forget_subtree_impl(port, ptr, rust_vec_len, data_len),
+        33 => wire__crate__api__git__get_cached_file_change_impl(port, ptr, rust_vec_len, data_len),
+        34 => wire__crate__api__git__get_commit_detail_impl(port, ptr, rust_vec_len, data_len),
+        35 => {
+            wire__crate__api__git__get_containing_branches_impl(port, ptr, rust_vec_len, data_len)
+        }
+        36 => wire__crate__api__git__get_stash_diff_impl(port, ptr, rust_vec_len, data_len),
+        37 => wire__crate__api__git__get_worktree_diff_impl(port, ptr, rust_vec_len, data_len),
+        38 => wire__crate__api__git__git_capabilities_impl(port, ptr, rust_vec_len, data_len),
+        39 => wire__crate__api__git__git_version_impl(port, ptr, rust_vec_len, data_len),
+        41 => {
+            wire__crate__api__git__history_cache_size_bytes_impl(port, ptr, rust_vec_len, data_len)
+        }
+        42 => wire__crate__api__simple__init_app_impl(port, ptr, rust_vec_len, data_len),
+        43 => wire__crate__api__git__init_submodules_impl(port, ptr, rust_vec_len, data_len),
+        44 => wire__crate__api__git__initialize_repository_impl(port, ptr, rust_vec_len, data_len),
+        45 => wire__crate__api__git__intent_to_add_impl(port, ptr, rust_vec_len, data_len),
+        46 => wire__crate__api__git__list_branches_cursor_impl(port, ptr, rust_vec_len, data_len),
+        47 => wire__crate__api__git__list_changes_cursor_impl(port, ptr, rust_vec_len, data_len),
+        48 => wire__crate__api__git__list_commits_impl(port, ptr, rust_vec_len, data_len),
+        49 => wire__crate__api__git__list_commits_cursor_impl(port, ptr, rust_vec_len, data_len),
+        50 => wire__crate__api__git__list_history_refs_impl(port, ptr, rust_vec_len, data_len),
+        51 => wire__crate__api__git__list_remote_details_impl(port, ptr, rust_vec_len, data_len),
+        52 => wire__crate__api__git__list_submodules_impl(port, ptr, rust_vec_len, data_len),
+        53 => wire__crate__api__git__list_submodules_cursor_impl(port, ptr, rust_vec_len, data_len),
+        54 => wire__crate__api__git__list_subtrees_impl(port, ptr, rust_vec_len, data_len),
+        55 => wire__crate__api__git__load_commit_defaults_impl(port, ptr, rust_vec_len, data_len),
+        56 => wire__crate__api__git__load_conflict_impl(port, ptr, rust_vec_len, data_len),
+        57 => wire__crate__api__git__merge_branch_impl(port, ptr, rust_vec_len, data_len),
+        58 => wire__crate__api__git__open_external_file_impl(port, ptr, rust_vec_len, data_len),
+        59 => wire__crate__api__git__open_in_vscode_impl(port, ptr, rust_vec_len, data_len),
+        60 => wire__crate__api__git__open_repository_impl(port, ptr, rust_vec_len, data_len),
+        61 => wire__crate__api__git__open_repository_paged_impl(port, ptr, rust_vec_len, data_len),
+        62 => wire__crate__api__git__prepare_interactive_rebase_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        57 => {
+        63 => {
             wire__crate__api__git__preview_remove_submodule_impl(port, ptr, rust_vec_len, data_len)
         }
-        58 => wire__crate__api__git__preview_reset_impl(port, ptr, rust_vec_len, data_len),
-        59 => wire__crate__api__git__pull_impl(port, ptr, rust_vec_len, data_len),
-        60 => wire__crate__api__git__push_current_impl(port, ptr, rust_vec_len, data_len),
-        61 => wire__crate__api__git__push_current_to_impl(port, ptr, rust_vec_len, data_len),
-        62 => wire__crate__api__git__read_git_config_impl(port, ptr, rust_vec_len, data_len),
-        63 => wire__crate__api__git__read_sparse_checkout_impl(port, ptr, rust_vec_len, data_len),
-        64 => wire__crate__api__git__rebase_branch_impl(port, ptr, rust_vec_len, data_len),
-        65 => wire__crate__api__git__refresh_repository_impl(port, ptr, rust_vec_len, data_len),
-        66 => {
+        64 => wire__crate__api__git__preview_reset_impl(port, ptr, rust_vec_len, data_len),
+        65 => wire__crate__api__git__pull_impl(port, ptr, rust_vec_len, data_len),
+        66 => wire__crate__api__git__push_current_impl(port, ptr, rust_vec_len, data_len),
+        67 => wire__crate__api__git__push_current_to_impl(port, ptr, rust_vec_len, data_len),
+        68 => wire__crate__api__git__query_commits_impl(port, ptr, rust_vec_len, data_len),
+        69 => wire__crate__api__git__read_git_config_impl(port, ptr, rust_vec_len, data_len),
+        70 => wire__crate__api__git__read_sparse_checkout_impl(port, ptr, rust_vec_len, data_len),
+        71 => wire__crate__api__git__rebase_branch_impl(port, ptr, rust_vec_len, data_len),
+        72 => wire__crate__api__git__refresh_repository_impl(port, ptr, rust_vec_len, data_len),
+        73 => {
             wire__crate__api__git__refresh_repository_paged_impl(port, ptr, rust_vec_len, data_len)
         }
-        67 => wire__crate__api__git__refresh_working_tree_impl(port, ptr, rust_vec_len, data_len),
-        68 => wire__crate__api__git__refresh_working_tree_paged_impl(
+        74 => wire__crate__api__git__refresh_working_tree_impl(port, ptr, rust_vec_len, data_len),
+        75 => wire__crate__api__git__refresh_working_tree_paged_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        69 => wire__crate__api__git__register_subtree_impl(port, ptr, rust_vec_len, data_len),
-        70 => wire__crate__api__git__remove_remote_impl(port, ptr, rust_vec_len, data_len),
-        71 => wire__crate__api__git__remove_submodule_impl(port, ptr, rust_vec_len, data_len),
-        72 => wire__crate__api__git__rename_branch_impl(port, ptr, rust_vec_len, data_len),
-        73 => wire__crate__api__git__rename_remote_impl(port, ptr, rust_vec_len, data_len),
-        74 => wire__crate__api__git__reset_to_commit_impl(port, ptr, rust_vec_len, data_len),
-        75 => wire__crate__api__git__revert_commit_impl(port, ptr, rust_vec_len, data_len),
-        76 => wire__crate__api__git__run_subtree_operation_impl(port, ptr, rust_vec_len, data_len),
-        77 => {
+        76 => wire__crate__api__git__register_subtree_impl(port, ptr, rust_vec_len, data_len),
+        77 => wire__crate__api__git__remove_remote_impl(port, ptr, rust_vec_len, data_len),
+        78 => wire__crate__api__git__remove_submodule_impl(port, ptr, rust_vec_len, data_len),
+        79 => wire__crate__api__git__rename_branch_impl(port, ptr, rust_vec_len, data_len),
+        80 => wire__crate__api__git__rename_remote_impl(port, ptr, rust_vec_len, data_len),
+        81 => wire__crate__api__git__reset_to_commit_impl(port, ptr, rust_vec_len, data_len),
+        82 => wire__crate__api__git__revert_commit_impl(port, ptr, rust_vec_len, data_len),
+        83 => wire__crate__api__git__run_subtree_operation_impl(port, ptr, rust_vec_len, data_len),
+        84 => {
             wire__crate__api__git__save_conflict_resolution_impl(port, ptr, rust_vec_len, data_len)
         }
-        78 => wire__crate__api__git__set_git_config_impl(port, ptr, rust_vec_len, data_len),
-        79 => wire__crate__api__git__set_sparse_checkout_impl(port, ptr, rust_vec_len, data_len),
-        80 => wire__crate__api__git__stage_paths_impl(port, ptr, rust_vec_len, data_len),
-        81 => {
+        85 => wire__crate__api__git__set_git_config_impl(port, ptr, rust_vec_len, data_len),
+        86 => wire__crate__api__git__set_sparse_checkout_impl(port, ptr, rust_vec_len, data_len),
+        87 => wire__crate__api__git__stage_paths_impl(port, ptr, rust_vec_len, data_len),
+        88 => {
             wire__crate__api__git__start_interactive_rebase_impl(port, ptr, rust_vec_len, data_len)
         }
-        82 => wire__crate__api__git__stash_apply_impl(port, ptr, rust_vec_len, data_len),
-        83 => wire__crate__api__git__stash_drop_impl(port, ptr, rust_vec_len, data_len),
-        84 => wire__crate__api__git__stash_save_impl(port, ptr, rust_vec_len, data_len),
-        85 => wire__crate__api__git__switch_branch_impl(port, ptr, rust_vec_len, data_len),
-        86 => wire__crate__api__git__sync_submodules_impl(port, ptr, rust_vec_len, data_len),
-        87 => wire__crate__api__git__unset_git_config_value_impl(port, ptr, rust_vec_len, data_len),
-        88 => wire__crate__api__git__unstage_paths_impl(port, ptr, rust_vec_len, data_len),
-        89 => wire__crate__api__git__update_remote_impl(port, ptr, rust_vec_len, data_len),
-        90 => wire__crate__api__git__update_submodules_impl(port, ptr, rust_vec_len, data_len),
-        91 => wire__crate__api__git__watch_repository_impl(port, ptr, rust_vec_len, data_len),
+        89 => wire__crate__api__git__stash_apply_impl(port, ptr, rust_vec_len, data_len),
+        90 => wire__crate__api__git__stash_drop_impl(port, ptr, rust_vec_len, data_len),
+        91 => wire__crate__api__git__stash_save_impl(port, ptr, rust_vec_len, data_len),
+        92 => wire__crate__api__git__switch_branch_impl(port, ptr, rust_vec_len, data_len),
+        93 => wire__crate__api__git__sync_submodules_impl(port, ptr, rust_vec_len, data_len),
+        94 => wire__crate__api__git__unset_git_config_value_impl(port, ptr, rust_vec_len, data_len),
+        95 => wire__crate__api__git__unstage_paths_impl(port, ptr, rust_vec_len, data_len),
+        96 => wire__crate__api__git__update_remote_impl(port, ptr, rust_vec_len, data_len),
+        97 => wire__crate__api__git__update_submodules_impl(port, ptr, rust_vec_len, data_len),
+        98 => wire__crate__api__git__watch_history_index_impl(port, ptr, rust_vec_len, data_len),
+        99 => wire__crate__api__git__watch_repository_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -4992,7 +5381,7 @@ fn pde_ffi_dispatcher_sync_impl(
 ) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
     // Codec=Pde (Serialization + dispatch), see doc to use other codecs
     match func_id {
-        36 => wire__crate__api__simple__greet_impl(ptr, rust_vec_len, data_len),
+        40 => wire__crate__api__simple__greet_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -5275,6 +5664,29 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::models::CommitPage>
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::models::CommitQueryPage {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.commits.into_into_dart().into_dart(),
+            self.next_cursor.into_into_dart().into_dart(),
+            self.matched_count.into_into_dart().into_dart(),
+            self.indexing.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::models::CommitQueryPage
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::models::CommitQueryPage>
+    for crate::api::models::CommitQueryPage
+{
+    fn into_into_dart(self) -> crate::api::models::CommitQueryPage {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for crate::api::models::CommitReference {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
@@ -5419,6 +5831,29 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::models::ConflictRegion>
     for crate::api::models::ConflictRegion
 {
     fn into_into_dart(self) -> crate::api::models::ConflictRegion {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::models::ContainingBranches {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.local.into_into_dart().into_dart(),
+            self.remote.into_into_dart().into_dart(),
+            self.truncated_count.into_into_dart().into_dart(),
+            self.refs_fingerprint.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::models::ContainingBranches
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::models::ContainingBranches>
+    for crate::api::models::ContainingBranches
+{
+    fn into_into_dart(self) -> crate::api::models::ContainingBranches {
         self
     }
 }
@@ -5740,6 +6175,73 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::models::GraphLane>
     for crate::api::models::GraphLane
 {
     fn into_into_dart(self) -> crate::api::models::GraphLane {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::models::HistoryIndexProgress {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.indexed_commits.into_into_dart().into_dart(),
+            self.total_commits.into_into_dart().into_dart(),
+            self.complete.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::models::HistoryIndexProgress
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::models::HistoryIndexProgress>
+    for crate::api::models::HistoryIndexProgress
+{
+    fn into_into_dart(self) -> crate::api::models::HistoryIndexProgress {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::models::HistoryQuery {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.scope.into_into_dart().into_dart(),
+            self.selected_ref.into_into_dart().into_dart(),
+            self.text.into_into_dart().into_dart(),
+            self.path.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::models::HistoryQuery
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::models::HistoryQuery>
+    for crate::api::models::HistoryQuery
+{
+    fn into_into_dart(self) -> crate::api::models::HistoryQuery {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::models::HistoryScope {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self {
+            Self::CurrentBranch => 0.into_dart(),
+            Self::SelectedRef => 1.into_dart(),
+            Self::AllRefs => 2.into_dart(),
+            _ => unreachable!(),
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::models::HistoryScope
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::models::HistoryScope>
+    for crate::api::models::HistoryScope
+{
+    fn into_into_dart(self) -> crate::api::models::HistoryScope {
         self
     }
 }
@@ -6593,6 +7095,18 @@ impl SseEncode for flutter_rust_bridge::for_generated::anyhow::Error {
 }
 
 impl SseEncode
+    for StreamSink<
+        crate::api::models::HistoryIndexProgress,
+        flutter_rust_bridge::for_generated::SseCodec,
+    >
+{
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        unimplemented!("")
+    }
+}
+
+impl SseEncode
     for StreamSink<crate::api::models::OperationEvent, flutter_rust_bridge::for_generated::SseCodec>
 {
     // Codec=Sse (Serialization based), see doc to use other codecs
@@ -6775,6 +7289,16 @@ impl SseEncode for crate::api::models::CommitPage {
     }
 }
 
+impl SseEncode for crate::api::models::CommitQueryPage {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <Vec<crate::api::models::CommitSummary>>::sse_encode(self.commits, serializer);
+        <Option<String>>::sse_encode(self.next_cursor, serializer);
+        <u32>::sse_encode(self.matched_count, serializer);
+        <crate::api::models::HistoryIndexProgress>::sse_encode(self.indexing, serializer);
+    }
+}
+
 impl SseEncode for crate::api::models::CommitReference {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -6858,6 +7382,16 @@ impl SseEncode for crate::api::models::ConflictRegion {
         <String>::sse_encode(self.base, serializer);
         <String>::sse_encode(self.ours, serializer);
         <String>::sse_encode(self.theirs, serializer);
+    }
+}
+
+impl SseEncode for crate::api::models::ContainingBranches {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <Vec<String>>::sse_encode(self.local, serializer);
+        <Vec<String>>::sse_encode(self.remote, serializer);
+        <u32>::sse_encode(self.truncated_count, serializer);
+        <String>::sse_encode(self.refs_fingerprint, serializer);
     }
 }
 
@@ -7049,6 +7583,42 @@ impl SseEncode for crate::api::models::GraphLane {
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <u32>::sse_encode(self.column, serializer);
         <Vec<u32>>::sse_encode(self.parent_columns, serializer);
+    }
+}
+
+impl SseEncode for crate::api::models::HistoryIndexProgress {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <u32>::sse_encode(self.indexed_commits, serializer);
+        <u32>::sse_encode(self.total_commits, serializer);
+        <bool>::sse_encode(self.complete, serializer);
+    }
+}
+
+impl SseEncode for crate::api::models::HistoryQuery {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <crate::api::models::HistoryScope>::sse_encode(self.scope, serializer);
+        <Option<String>>::sse_encode(self.selected_ref, serializer);
+        <String>::sse_encode(self.text, serializer);
+        <Option<String>>::sse_encode(self.path, serializer);
+    }
+}
+
+impl SseEncode for crate::api::models::HistoryScope {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(
+            match self {
+                crate::api::models::HistoryScope::CurrentBranch => 0,
+                crate::api::models::HistoryScope::SelectedRef => 1,
+                crate::api::models::HistoryScope::AllRefs => 2,
+                _ => {
+                    unimplemented!("");
+                }
+            },
+            serializer,
+        );
     }
 }
 
@@ -7828,7 +8398,7 @@ mod io {
     use flutter_rust_bridge::for_generated::byteorder::{
         NativeEndian, ReadBytesExt, WriteBytesExt,
     };
-    use flutter_rust_bridge::for_generated::{Lifetimeable, Lockable, transform_result_dco};
+    use flutter_rust_bridge::for_generated::{transform_result_dco, Lifetimeable, Lockable};
     use flutter_rust_bridge::{Handler, IntoIntoDart};
 
     // Section: boilerplate
@@ -7852,7 +8422,7 @@ mod web {
     };
     use flutter_rust_bridge::for_generated::wasm_bindgen;
     use flutter_rust_bridge::for_generated::wasm_bindgen::prelude::*;
-    use flutter_rust_bridge::for_generated::{Lifetimeable, Lockable, transform_result_dco};
+    use flutter_rust_bridge::for_generated::{transform_result_dco, Lifetimeable, Lockable};
     use flutter_rust_bridge::{Handler, IntoIntoDart};
 
     // Section: boilerplate

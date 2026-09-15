@@ -2730,6 +2730,111 @@ class _HistoryPanel extends ConsumerWidget {
     }
     return Column(
       children: [
+        SizedBox(
+          height: 52,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 230,
+                  child: TextFormField(
+                    initialValue: tab.historyText,
+                    decoration: InputDecoration(
+                      isDense: true,
+                      prefixIcon: const Icon(Icons.search, size: 18),
+                      hintText: strings.historySearch,
+                    ),
+                    onChanged: (value) => ref
+                        .read(gitFrontProvider.notifier)
+                        .setHistoryFilters(text: value),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 180,
+                  child: TextFormField(
+                    initialValue: tab.historyPath,
+                    decoration: InputDecoration(
+                      isDense: true,
+                      prefixIcon: const Icon(Icons.folder_outlined, size: 18),
+                      hintText: strings.historyPath,
+                    ),
+                    onChanged: (value) => ref
+                        .read(gitFrontProvider.notifier)
+                        .setHistoryFilters(path: value),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                DropdownButton<HistoryScope>(
+                  value: tab.historyScope,
+                  items: [
+                    DropdownMenuItem(
+                      value: HistoryScope.currentBranch,
+                      child: Text(strings.currentBranchHistory),
+                    ),
+                    DropdownMenuItem(
+                      value: HistoryScope.selectedRef,
+                      child: Text(strings.selectedRefHistory),
+                    ),
+                    DropdownMenuItem(
+                      value: HistoryScope.allRefs,
+                      child: Text(strings.allRefsHistory),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    if (value == null) return;
+                    final firstRef =
+                        tab.selectedHistoryRef ??
+                        tab.historyRefs.firstOrNull?.fullName;
+                    ref
+                        .read(gitFrontProvider.notifier)
+                        .setHistoryFilters(
+                          scope: value,
+                          selectedRef: firstRef,
+                          immediate: true,
+                        );
+                  },
+                ),
+                if (tab.historyScope == HistoryScope.selectedRef) ...[
+                  const SizedBox(width: 8),
+                  DropdownButton<String>(
+                    hint: Text(strings.chooseRef),
+                    value:
+                        tab.historyRefs.any(
+                          (reference) =>
+                              reference.fullName == tab.selectedHistoryRef,
+                        )
+                        ? tab.selectedHistoryRef
+                        : null,
+                    items: [
+                      for (final reference in tab.historyRefs)
+                        DropdownMenuItem(
+                          value: reference.fullName,
+                          child: Text(reference.name),
+                        ),
+                    ],
+                    onChanged: (value) => ref
+                        .read(gitFrontProvider.notifier)
+                        .setHistoryFilters(selectedRef: value, immediate: true),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        if (!tab.historyIndexing.complete)
+          LinearProgressIndicator(
+            value: tab.historyIndexing.totalCommits == 0
+                ? null
+                : tab.historyIndexing.indexedCommits /
+                      tab.historyIndexing.totalCommits,
+            semanticsLabel: strings.historyIndexProgress(
+              tab.historyIndexing.indexedCommits,
+              tab.historyIndexing.totalCommits,
+            ),
+          ),
         _GraphLegend(strings: strings),
         const Divider(height: 1),
         Expanded(
@@ -2921,6 +3026,8 @@ class _CommitTileState extends ConsumerState<_CommitTile> {
                 lane: commit.lane,
                 references: commit.references,
                 strings: strings,
+                repositoryPath: widget.tab.snapshot.workdir,
+                oid: commit.oid,
               ),
               title: Row(
                 children: [
@@ -3699,6 +3806,32 @@ class _CommitDetailPane extends StatelessWidget {
                 detail.oid,
                 style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
               ),
+              const SizedBox(height: 10),
+              Text(
+                strings.containingBranches,
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
+              if (tab.containingBranches == null)
+                const Padding(
+                  padding: EdgeInsets.only(top: 6),
+                  child: LinearProgressIndicator(),
+                )
+              else if (tab.containingBranches!.local.isEmpty &&
+                  tab.containingBranches!.remote.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(strings.noContainingBranches),
+                )
+              else ...[
+                if (tab.containingBranches!.local.isNotEmpty)
+                  SelectableText(
+                    '${strings.localBranches}: ${tab.containingBranches!.local.join(', ')}',
+                  ),
+                if (tab.containingBranches!.remote.isNotEmpty)
+                  SelectableText(
+                    '${strings.remoteBranches}: ${tab.containingBranches!.remote.join(', ')}',
+                  ),
+              ],
             ],
           ),
         ),
@@ -5699,6 +5832,62 @@ class _SettingsDialog extends ConsumerWidget {
                 ),
               ],
               const SizedBox(height: 18),
+              Text(
+                strings.historyCache,
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
+              Text(
+                strings.historyCacheDescription,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Expanded(
+                    child: DropdownButtonFormField<int>(
+                      initialValue: state.historyCacheLimitMb,
+                      decoration: InputDecoration(
+                        labelText: strings.cacheLimit,
+                        isDense: true,
+                      ),
+                      items:
+                          ({
+                                128,
+                                256,
+                                512,
+                                1024,
+                                2048,
+                                state.historyCacheLimitMb,
+                              }.toList()..sort())
+                              .map(
+                                (value) => DropdownMenuItem(
+                                  value: value,
+                                  child: Text('$value MB'),
+                                ),
+                              )
+                              .toList(),
+                      onChanged: (value) {
+                        if (value != null) {
+                          unawaited(controller.setHistoryCacheLimit(value));
+                        }
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      await controller.clearHistoryCaches();
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(strings.cacheCleared)),
+                      );
+                    },
+                    icon: const Icon(Icons.delete_outline),
+                    label: Text(strings.clearHistoryCache),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
               const Divider(),
               ListTile(
                 contentPadding: EdgeInsets.zero,
@@ -6970,16 +7159,60 @@ class _GraphLegend extends StatelessWidget {
   );
 }
 
-class _GraphDot extends StatelessWidget {
+class _GraphDot extends StatefulWidget {
   const _GraphDot({
     required this.lane,
     required this.references,
     required this.strings,
+    required this.repositoryPath,
+    required this.oid,
   });
 
   final GraphLane lane;
   final List<CommitReference> references;
   final GitFrontStrings strings;
+  final String repositoryPath;
+  final String oid;
+
+  @override
+  State<_GraphDot> createState() => _GraphDotState();
+}
+
+class _GraphDotState extends State<_GraphDot> {
+  Timer? _hoverTimer;
+  ContainingBranches? _containing;
+
+  @override
+  void didUpdateWidget(covariant _GraphDot oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.oid != widget.oid ||
+        oldWidget.repositoryPath != widget.repositoryPath) {
+      _hoverTimer?.cancel();
+      _containing = null;
+    }
+  }
+
+  @override
+  void dispose() {
+    _hoverTimer?.cancel();
+    super.dispose();
+  }
+
+  void _scheduleLookup() {
+    if (_containing != null || _hoverTimer?.isActive == true) return;
+    _hoverTimer = Timer(const Duration(milliseconds: 250), () async {
+      try {
+        final result = await git_api.getContainingBranches(
+          path: widget.repositoryPath,
+          oid: widget.oid,
+          displayLimit: 8,
+        );
+        if (mounted) setState(() => _containing = result);
+      } catch (_) {
+        // A tooltip lookup must never interrupt log navigation.
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -6990,31 +7223,42 @@ class _GraphDot extends StatelessWidget {
       Colors.pink,
       Colors.blue,
     ];
-    final directReferences = references
+    final directReferences = widget.references
         .where((reference) => reference.kind != CommitReferenceKind.head)
         .map((reference) => reference.name)
         .toList(growable: false);
     return Tooltip(
-      message: strings.graphDotTooltip(
-        lane.column.toInt() + 1,
-        directReferences,
-      ),
-      child: SizedBox(
-        width: 32,
-        child: Align(
-          alignment: Alignment(
-            -1 + (lane.column.clamp(0, 4).toDouble() * 0.45),
-            0,
-          ),
-          child: Container(
-            width: 11,
-            height: 11,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: palette[lane.column.toInt() % palette.length],
-              border: Border.all(
-                color: Theme.of(context).colorScheme.surface,
-                width: 2,
+      message: _containing == null
+          ? widget.strings.graphDotTooltip(
+              widget.lane.column.toInt() + 1,
+              directReferences,
+            )
+          : widget.strings.graphDotContainingTooltip(
+              widget.lane.column.toInt() + 1,
+              _containing!.local,
+              _containing!.remote,
+              _containing!.truncatedCount,
+            ),
+      child: MouseRegion(
+        onEnter: (_) => _scheduleLookup(),
+        onExit: (_) => _hoverTimer?.cancel(),
+        child: SizedBox(
+          width: 32,
+          child: Align(
+            alignment: Alignment(
+              -1 + (widget.lane.column.clamp(0, 4).toDouble() * 0.45),
+              0,
+            ),
+            child: Container(
+              width: 11,
+              height: 11,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: palette[widget.lane.column.toInt() % palette.length],
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.surface,
+                  width: 2,
+                ),
               ),
             ),
           ),

@@ -7,6 +7,8 @@ import 'src/rust/api/git.dart' as git_api;
 import 'src/rust/api/models.dart';
 import 'src/rust/api/update.dart' as update_api;
 
+const _stateUnset = Object();
+
 enum WorkspaceMode { changes, history }
 
 enum AppLanguage { system, korean, english }
@@ -24,6 +26,17 @@ class RepoTabState {
     this.commits = const [],
     this.nextCursor,
     this.totalCommits = 0,
+    this.historyScope = HistoryScope.currentBranch,
+    this.historyRefs = const [],
+    this.historyText = '',
+    this.historyPath,
+    this.selectedHistoryRef,
+    this.historyIndexing = const HistoryIndexProgress(
+      indexedCommits: 0,
+      totalCommits: 0,
+      complete: true,
+    ),
+    this.containingBranches,
     this.mode = WorkspaceMode.changes,
     this.selectedFile,
     this.selectedFileStaged = false,
@@ -47,6 +60,13 @@ class RepoTabState {
   final List<CommitSummary> commits;
   final String? nextCursor;
   final int totalCommits;
+  final HistoryScope historyScope;
+  final List<CommitReference> historyRefs;
+  final String historyText;
+  final String? historyPath;
+  final String? selectedHistoryRef;
+  final HistoryIndexProgress historyIndexing;
+  final ContainingBranches? containingBranches;
   final WorkspaceMode mode;
   final FileChange? selectedFile;
   final bool selectedFileStaged;
@@ -95,6 +115,14 @@ class RepoTabState {
     String? nextCursor,
     bool clearNextCursor = false,
     int? totalCommits,
+    HistoryScope? historyScope,
+    List<CommitReference>? historyRefs,
+    String? historyText,
+    Object? historyPath = _stateUnset,
+    Object? selectedHistoryRef = _stateUnset,
+    HistoryIndexProgress? historyIndexing,
+    ContainingBranches? containingBranches,
+    bool clearContainingBranches = false,
     WorkspaceMode? mode,
     FileChange? selectedFile,
     bool clearSelectedFile = false,
@@ -129,6 +157,19 @@ class RepoTabState {
       commits: commits ?? this.commits,
       nextCursor: clearNextCursor ? null : nextCursor ?? this.nextCursor,
       totalCommits: totalCommits ?? this.totalCommits,
+      historyScope: historyScope ?? this.historyScope,
+      historyRefs: historyRefs ?? this.historyRefs,
+      historyText: historyText ?? this.historyText,
+      historyPath: identical(historyPath, _stateUnset)
+          ? this.historyPath
+          : historyPath as String?,
+      selectedHistoryRef: identical(selectedHistoryRef, _stateUnset)
+          ? this.selectedHistoryRef
+          : selectedHistoryRef as String?,
+      historyIndexing: historyIndexing ?? this.historyIndexing,
+      containingBranches: clearContainingBranches
+          ? null
+          : containingBranches ?? this.containingBranches,
       mode: mode ?? this.mode,
       selectedFile: clearSelectedFile
           ? null
@@ -166,6 +207,7 @@ class GitFrontState {
     this.externalEditor = ExternalEditor.vsCode,
     this.customEditorExecutable = '',
     this.operationLog = const [],
+    this.historyCacheLimitMb = 512,
     this.initializing = true,
   });
 
@@ -180,6 +222,7 @@ class GitFrontState {
   final ExternalEditor externalEditor;
   final String customEditorExecutable;
   final List<String> operationLog;
+  final int historyCacheLimitMb;
   final bool initializing;
 
   RepoTabState? get activeTab =>
@@ -198,6 +241,7 @@ class GitFrontState {
     ExternalEditor? externalEditor,
     String? customEditorExecutable,
     List<String>? operationLog,
+    int? historyCacheLimitMb,
     bool? initializing,
   }) {
     return GitFrontState(
@@ -213,6 +257,7 @@ class GitFrontState {
       customEditorExecutable:
           customEditorExecutable ?? this.customEditorExecutable,
       operationLog: operationLog ?? this.operationLog,
+      historyCacheLimitMb: historyCacheLimitMb ?? this.historyCacheLimitMb,
       initializing: initializing ?? this.initializing,
     );
   }
@@ -229,6 +274,9 @@ final gitFrontProvider = NotifierProvider<GitFrontController, GitFrontState>(
 class GitFrontController extends Notifier<GitFrontState> {
   final Map<String, StreamSubscription<dynamic>> _watchers = {};
   final Map<String, int> _requestVersions = {};
+  final Map<String, Timer> _historyDebounce = {};
+  final Map<String, StreamSubscription<HistoryIndexProgress>>
+  _historyIndexWatchers = {};
   late SettingsStore _settingsStore;
   AppSettings _settings = const AppSettings();
 
@@ -237,6 +285,12 @@ class GitFrontController extends Notifier<GitFrontState> {
     _settingsStore = ref.read(settingsStoreProvider);
     ref.onDispose(() {
       for (final watcher in _watchers.values) {
+        unawaited(watcher.cancel());
+      }
+      for (final timer in _historyDebounce.values) {
+        timer.cancel();
+      }
+      for (final watcher in _historyIndexWatchers.values) {
         unawaited(watcher.cancel());
       }
     });
@@ -277,8 +331,17 @@ class GitFrontController extends Notifier<GitFrontState> {
       detailPanelVisible: _settings.detailPanelVisible,
       externalEditor: editors.isEmpty ? ExternalEditor.vsCode : editors.first,
       customEditorExecutable: _settings.customEditorExecutable,
+      historyCacheLimitMb: _settings.historyCacheLimitMb,
       initializing: false,
     );
+    try {
+      await git_api.configureHistoryCache(
+        maxMegabytes: _settings.historyCacheLimitMb,
+        development: currentSettingsBuildMode != SettingsBuildMode.release,
+      );
+    } catch (error) {
+      _appendLog('History cache configuration failed: $error');
+    }
     _appendLog(
       'Startup UI ready in ${startup.elapsedMilliseconds} ms '
       '(settings $settingsLoadedAt ms)',
@@ -358,11 +421,14 @@ class GitFrontController extends Notifier<GitFrontState> {
   Future<void> _loadInitialHistory(String path) async {
     final started = Stopwatch()..start();
     try {
-      final page = await git_api.listCommitsCursor(
+      final tab = state.tabs[_indexForPath(path)];
+      final page = await git_api.queryCommits(
         path: path,
+        query: _historyQuery(tab),
         cursor: null,
         limit: 200,
       );
+      final historyRefs = await git_api.listHistoryRefs(path: path);
       final index = _indexForPath(path);
       if (index < 0) return;
       _updateTab(
@@ -371,7 +437,9 @@ class GitFrontController extends Notifier<GitFrontState> {
           commits: page.commits,
           nextCursor: page.nextCursor,
           clearNextCursor: page.nextCursor == null,
-          totalCommits: page.totalCommits,
+          totalCommits: page.matchedCount,
+          historyIndexing: page.indexing,
+          historyRefs: historyRefs,
           busy: false,
         ),
       );
@@ -452,6 +520,8 @@ class GitFrontController extends Notifier<GitFrontState> {
         : state.activeIndex.clamp(0, tabs.length - 1);
     state = state.copyWith(tabs: tabs, activeIndex: activeIndex);
     unawaited(_watchers.remove(closedPath.toLowerCase())?.cancel());
+    unawaited(_historyIndexWatchers.remove(closedPath)?.cancel());
+    _historyDebounce.remove(closedPath)?.cancel();
     unawaited(_persistTabs());
   }
 
@@ -475,13 +545,16 @@ class GitFrontController extends Notifier<GitFrontState> {
         changeLimit: 250,
       );
       final snapshot = refreshed.snapshot;
-      CommitCursorPage? page;
+      CommitQueryPage? page;
+      List<CommitReference>? historyRefs;
       if (reloadHistory) {
-        page = await git_api.listCommitsCursor(
+        page = await git_api.queryCommits(
           path: snapshot.workdir,
+          query: _historyQuery(tab),
           cursor: null,
           limit: 200,
         );
+        historyRefs = await git_api.listHistoryRefs(path: snapshot.workdir);
       }
       final index = _indexForPath(path);
       if (index < 0 || !_isLatestRequest(path, requestVersion)) return;
@@ -528,7 +601,9 @@ class GitFrontController extends Notifier<GitFrontState> {
           commits: page?.commits,
           nextCursor: page?.nextCursor,
           clearNextCursor: page != null && page.nextCursor == null,
-          totalCommits: page?.totalCommits,
+          totalCommits: page?.matchedCount,
+          historyIndexing: page?.indexing,
+          historyRefs: historyRefs,
           selectedFile: selected,
           clearSelectedFile: selected == null,
           diff: diff,
@@ -647,6 +722,111 @@ class GitFrontController extends Notifier<GitFrontState> {
     );
   }
 
+  HistoryQuery _historyQuery(RepoTabState tab) => HistoryQuery(
+    scope: tab.historyScope,
+    selectedRef: tab.historyScope == HistoryScope.selectedRef
+        ? tab.selectedHistoryRef
+        : null,
+    text: tab.historyText,
+    path: tab.historyPath?.trim().isEmpty ?? true
+        ? null
+        : tab.historyPath!.trim(),
+  );
+
+  void setHistoryFilters({
+    HistoryScope? scope,
+    String? selectedRef,
+    String? text,
+    String? path,
+    bool immediate = false,
+  }) {
+    final tab = state.activeTab;
+    if (tab == null) return;
+    final repositoryPath = tab.snapshot.workdir;
+    final updated = tab.copyWith(
+      historyScope: scope,
+      selectedHistoryRef:
+          scope == HistoryScope.selectedRef ||
+              (scope == null && tab.historyScope == HistoryScope.selectedRef)
+          ? selectedRef ?? tab.selectedHistoryRef
+          : null,
+      historyText: text,
+      historyPath: path,
+      clearSelectedCommit: true,
+      clearCommitDetail: true,
+      clearContainingBranches: true,
+    );
+    _updateTab(state.activeIndex, updated);
+    _historyDebounce[repositoryPath]?.cancel();
+    _historyDebounce[repositoryPath] = Timer(
+      immediate ? Duration.zero : const Duration(milliseconds: 300),
+      () => unawaited(_runHistoryQuery(repositoryPath)),
+    );
+  }
+
+  Future<void> _runHistoryQuery(String repositoryPath) async {
+    final index = _indexForPath(repositoryPath);
+    if (index < 0) return;
+    final tab = state.tabs[index];
+    if (tab.historyScope == HistoryScope.selectedRef &&
+        tab.selectedHistoryRef == null) {
+      return;
+    }
+    final requestVersion = _startRequest(repositoryPath);
+    _updateTab(index, tab.copyWith(busy: true, clearError: true));
+    try {
+      final page = await git_api.queryCommits(
+        path: repositoryPath,
+        query: _historyQuery(tab),
+        cursor: null,
+        limit: 200,
+      );
+      final latestIndex = _indexForPath(repositoryPath);
+      if (latestIndex < 0 ||
+          !_isLatestRequest(repositoryPath, requestVersion)) {
+        return;
+      }
+      _updateTab(
+        latestIndex,
+        state.tabs[latestIndex].copyWith(
+          commits: page.commits,
+          nextCursor: page.nextCursor,
+          clearNextCursor: page.nextCursor == null,
+          totalCommits: page.matchedCount,
+          historyIndexing: page.indexing,
+          busy: false,
+        ),
+      );
+      if (!page.indexing.complete && tab.historyText.trim().isNotEmpty) {
+        _watchHistoryIndex(repositoryPath);
+      }
+    } catch (error) {
+      if (_isLatestRequest(repositoryPath, requestVersion)) {
+        final latestIndex = _indexForPath(repositoryPath);
+        if (latestIndex >= 0) _setError(latestIndex, error);
+      }
+    }
+  }
+
+  void _watchHistoryIndex(String repositoryPath) {
+    if (_historyIndexWatchers.containsKey(repositoryPath)) return;
+    _historyIndexWatchers[repositoryPath] = git_api
+        .watchHistoryIndex(path: repositoryPath)
+        .listen(
+          (progress) {
+            final index = _indexForPath(repositoryPath);
+            if (index < 0) return;
+            final tab = state.tabs[index];
+            _updateTab(index, tab.copyWith(historyIndexing: progress));
+            if (progress.complete && tab.historyText.trim().isNotEmpty) {
+              unawaited(_runHistoryQuery(repositoryPath));
+            }
+          },
+          onDone: () => _historyIndexWatchers.remove(repositoryPath),
+          onError: (_) => _historyIndexWatchers.remove(repositoryPath),
+        );
+  }
+
   Future<void> selectFile(FileChange file, {required bool staged}) async {
     final tab = state.activeTab;
     if (tab == null) return;
@@ -698,16 +878,30 @@ class GitFrontController extends Notifier<GitFrontState> {
         clearCommitDetail: true,
         clearCommitComparison: true,
         clearCommitComparisonLabel: true,
+        clearContainingBranches: true,
         clearError: true,
       ),
     );
     try {
-      final detail = await git_api.getCommitDetail(path: path, oid: commit.oid);
+      final results = await Future.wait<Object>([
+        git_api.getCommitDetail(path: path, oid: commit.oid),
+        git_api.getContainingBranches(
+          path: path,
+          oid: commit.oid,
+          displayLimit: 0,
+        ),
+      ]);
+      final detail = results[0] as CommitDetail;
+      final containing = results[1] as ContainingBranches;
       final latestIndex = _indexForPath(path);
       if (latestIndex >= 0 && _isLatestRequest(path, requestVersion)) {
         _updateTab(
           latestIndex,
-          state.tabs[latestIndex].copyWith(commitDetail: detail, busy: false),
+          state.tabs[latestIndex].copyWith(
+            commitDetail: detail,
+            containingBranches: containing,
+            busy: false,
+          ),
         );
       }
     } catch (error) {
@@ -796,8 +990,9 @@ class GitFrontController extends Notifier<GitFrontState> {
     final index = _indexForPath(path);
     _updateTab(index, tab.copyWith(busy: true));
     try {
-      final page = await git_api.listCommitsCursor(
+      final page = await git_api.queryCommits(
         path: path,
+        query: _historyQuery(tab),
         cursor: tab.nextCursor,
         limit: 200,
       );
@@ -810,7 +1005,8 @@ class GitFrontController extends Notifier<GitFrontState> {
           commits: [...current.commits, ...page.commits],
           nextCursor: page.nextCursor,
           clearNextCursor: page.nextCursor == null,
-          totalCommits: page.totalCommits,
+          totalCommits: page.matchedCount,
+          historyIndexing: page.indexing,
           busy: false,
         ),
       );
@@ -992,6 +1188,22 @@ class GitFrontController extends Notifier<GitFrontState> {
       customEditorExecutable: state.customEditorExecutable,
     );
     await _saveSettings();
+  }
+
+  Future<void> setHistoryCacheLimit(int megabytes) async {
+    final value = megabytes.clamp(64, 4096);
+    await git_api.configureHistoryCache(
+      maxMegabytes: value,
+      development: currentSettingsBuildMode != SettingsBuildMode.release,
+    );
+    state = state.copyWith(historyCacheLimitMb: value);
+    _settings = _settings.copyWith(historyCacheLimitMb: value);
+    await _saveSettings();
+  }
+
+  Future<void> clearHistoryCaches() async {
+    await git_api.clearAllHistoryCaches();
+    _appendLog('History search caches cleared');
   }
 
   String commitDraft(String repositoryPath) =>

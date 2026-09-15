@@ -10,7 +10,7 @@ See the [current feature list](docs/features.md) for the implemented workflows, 
 - Inspect staged, unstaged, untracked, and conflicted files with 250-item paging and bulk stage/unstage.
 - View unified or side-by-side diffs and stage, unstage, or discard individual files and hunks.
 - Commit staged changes with drafts, amend/sign-off/signing/author options while preserving Git hooks.
-- Browse a cursor-cached topological commit graph without replaying earlier pages and inspect commit diffs.
+- Browse a cursor-cached topological commit graph, switch between current/ref/all scopes, filter by text or path, and inspect containing branches and commit diffs.
 - Create, switch, rename, and delete local branches.
 - Manage remotes, fetch, pull, push, select an upstream, and push with `--force-with-lease`.
 - Inspect and edit repository or global Git configuration with inherited-value origins and sensitive-value masking.

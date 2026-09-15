@@ -69,6 +69,7 @@ void main() {
       customEditorExecutable: r'C:\Tools\editor.exe',
       lastUpdateCheck: 123456789,
       commitDrafts: {r'd:\repos\two': 'subject\n\nbody'},
+      historyCacheLimitMb: 1024,
     );
 
     await store.save(expected);
@@ -106,6 +107,7 @@ void main() {
     expect(settings.detailPanelWidth, 560);
     expect(settings.detailPanelVisible, isTrue);
     expect(settings.lastUpdateCheck, 0);
+    expect(settings.historyCacheLimitMb, 512);
   });
 
   test('recovers a corrupt settings file from its backup', () async {

@@ -46,9 +46,10 @@ class AppSettings {
     this.customEditorExecutable = '',
     this.lastUpdateCheck = 0,
     this.commitDrafts = const {},
+    this.historyCacheLimitMb = 512,
   });
 
-  static const currentSchemaVersion = 2;
+  static const currentSchemaVersion = 3;
 
   final int schemaVersion;
   final List<String> openRepositories;
@@ -63,6 +64,7 @@ class AppSettings {
   final String customEditorExecutable;
   final int lastUpdateCheck;
   final Map<String, String> commitDrafts;
+  final int historyCacheLimitMb;
 
   factory AppSettings.fromJson(Map<String, Object?> json) {
     return AppSettings(
@@ -83,6 +85,9 @@ class AppSettings {
           .clamp(0, 0x7fffffffffffffff)
           .toInt(),
       commitDrafts: _stringMap(json['commitDrafts']),
+      historyCacheLimitMb: (_integer(json['historyCacheLimitMb']) ?? 512)
+          .clamp(64, 4096)
+          .toInt(),
     );
   }
 
@@ -111,6 +116,7 @@ class AppSettings {
     'customEditorExecutable': customEditorExecutable,
     'lastUpdateCheck': lastUpdateCheck,
     'commitDrafts': commitDrafts,
+    'historyCacheLimitMb': historyCacheLimitMb,
   };
 
   AppSettings copyWith({
@@ -126,6 +132,7 @@ class AppSettings {
     String? customEditorExecutable,
     int? lastUpdateCheck,
     Map<String, String>? commitDrafts,
+    int? historyCacheLimitMb,
   }) {
     return AppSettings(
       schemaVersion: schemaVersion,
@@ -144,6 +151,7 @@ class AppSettings {
           customEditorExecutable ?? this.customEditorExecutable,
       lastUpdateCheck: lastUpdateCheck ?? this.lastUpdateCheck,
       commitDrafts: commitDrafts ?? this.commitDrafts,
+      historyCacheLimitMb: historyCacheLimitMb ?? this.historyCacheLimitMb,
     );
   }
 
@@ -162,7 +170,8 @@ class AppSettings {
         externalEditor == other.externalEditor &&
         customEditorExecutable == other.customEditorExecutable &&
         lastUpdateCheck == other.lastUpdateCheck &&
-        mapEquals(commitDrafts, other.commitDrafts);
+        mapEquals(commitDrafts, other.commitDrafts) &&
+        historyCacheLimitMb == other.historyCacheLimitMb;
   }
 
   @override
@@ -180,6 +189,7 @@ class AppSettings {
     customEditorExecutable,
     lastUpdateCheck,
     Object.hashAllUnordered(commitDrafts.entries),
+    historyCacheLimitMb,
   );
 }
 

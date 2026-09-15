@@ -387,6 +387,44 @@ pub struct CommitCursorPage {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub enum HistoryScope {
+    CurrentBranch,
+    SelectedRef,
+    AllRefs,
+}
+
+#[derive(Clone, Debug)]
+pub struct HistoryQuery {
+    pub scope: HistoryScope,
+    pub selected_ref: Option<String>,
+    pub text: String,
+    pub path: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct HistoryIndexProgress {
+    pub indexed_commits: u32,
+    pub total_commits: u32,
+    pub complete: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct CommitQueryPage {
+    pub commits: Vec<CommitSummary>,
+    pub next_cursor: Option<String>,
+    pub matched_count: u32,
+    pub indexing: HistoryIndexProgress,
+}
+
+#[derive(Clone, Debug)]
+pub struct ContainingBranches {
+    pub local: Vec<String>,
+    pub remote: Vec<String>,
+    pub truncated_count: u32,
+    pub refs_fingerprint: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CherryPickApplicability {
     Applicable,
     AlreadyApplied,

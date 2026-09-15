@@ -25,6 +25,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   AnyhowException dco_decode_AnyhowException(dynamic raw);
 
   @protected
+  RustStreamSink<HistoryIndexProgress>
+  dco_decode_StreamSink_history_index_progress_Sse(dynamic raw);
+
+  @protected
   RustStreamSink<OperationEvent> dco_decode_StreamSink_operation_event_Sse(
     dynamic raw,
   );
@@ -50,6 +54,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   FileChange dco_decode_box_autoadd_file_change(dynamic raw);
+
+  @protected
+  HistoryQuery dco_decode_box_autoadd_history_query(dynamic raw);
 
   @protected
   OperationResult dco_decode_box_autoadd_operation_result(dynamic raw);
@@ -113,6 +120,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   CommitPage dco_decode_commit_page(dynamic raw);
 
   @protected
+  CommitQueryPage dco_decode_commit_query_page(dynamic raw);
+
+  @protected
   CommitReference dco_decode_commit_reference(dynamic raw);
 
   @protected
@@ -129,6 +139,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   ConflictRegion dco_decode_conflict_region(dynamic raw);
+
+  @protected
+  ContainingBranches dco_decode_containing_branches(dynamic raw);
 
   @protected
   DiffDocument dco_decode_diff_document(dynamic raw);
@@ -174,6 +187,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   GraphLane dco_decode_graph_lane(dynamic raw);
+
+  @protected
+  HistoryIndexProgress dco_decode_history_index_progress(dynamic raw);
+
+  @protected
+  HistoryQuery dco_decode_history_query(dynamic raw);
+
+  @protected
+  HistoryScope dco_decode_history_scope(dynamic raw);
 
   @protected
   int dco_decode_i_32(dynamic raw);
@@ -383,6 +405,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
 
   @protected
+  RustStreamSink<HistoryIndexProgress>
+  sse_decode_StreamSink_history_index_progress_Sse(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   RustStreamSink<OperationEvent> sse_decode_StreamSink_operation_event_Sse(
     SseDeserializer deserializer,
   );
@@ -414,6 +442,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   FileChange sse_decode_box_autoadd_file_change(SseDeserializer deserializer);
+
+  @protected
+  HistoryQuery sse_decode_box_autoadd_history_query(
+    SseDeserializer deserializer,
+  );
 
   @protected
   OperationResult sse_decode_box_autoadd_operation_result(
@@ -483,6 +516,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   CommitPage sse_decode_commit_page(SseDeserializer deserializer);
 
   @protected
+  CommitQueryPage sse_decode_commit_query_page(SseDeserializer deserializer);
+
+  @protected
   CommitReference sse_decode_commit_reference(SseDeserializer deserializer);
 
   @protected
@@ -503,6 +539,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   ConflictRegion sse_decode_conflict_region(SseDeserializer deserializer);
+
+  @protected
+  ContainingBranches sse_decode_containing_branches(
+    SseDeserializer deserializer,
+  );
 
   @protected
   DiffDocument sse_decode_diff_document(SseDeserializer deserializer);
@@ -550,6 +591,17 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   GraphLane sse_decode_graph_lane(SseDeserializer deserializer);
+
+  @protected
+  HistoryIndexProgress sse_decode_history_index_progress(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  HistoryQuery sse_decode_history_query(SseDeserializer deserializer);
+
+  @protected
+  HistoryScope sse_decode_history_scope(SseDeserializer deserializer);
 
   @protected
   int sse_decode_i_32(SseDeserializer deserializer);
@@ -804,6 +856,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_StreamSink_history_index_progress_Sse(
+    RustStreamSink<HistoryIndexProgress> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_StreamSink_operation_event_Sse(
     RustStreamSink<OperationEvent> self,
     SseSerializer serializer,
@@ -839,6 +897,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_box_autoadd_file_change(
     FileChange self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_history_query(
+    HistoryQuery self,
     SseSerializer serializer,
   );
 
@@ -927,6 +991,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_commit_page(CommitPage self, SseSerializer serializer);
 
   @protected
+  void sse_encode_commit_query_page(
+    CommitQueryPage self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_commit_reference(
     CommitReference self,
     SseSerializer serializer,
@@ -953,6 +1023,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_conflict_region(
     ConflictRegion self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_containing_branches(
+    ContainingBranches self,
     SseSerializer serializer,
   );
 
@@ -1021,6 +1097,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_graph_lane(GraphLane self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_history_index_progress(
+    HistoryIndexProgress self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_history_query(HistoryQuery self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_history_scope(HistoryScope self, SseSerializer serializer);
 
   @protected
   void sse_encode_i_32(int self, SseSerializer serializer);

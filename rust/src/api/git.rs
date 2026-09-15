@@ -8,6 +8,7 @@ use notify::{RecursiveMode, Watcher};
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use regex::Regex;
+use rusqlite::{Connection, params};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -17,6 +18,7 @@ use std::os::windows::process::CommandExt;
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
@@ -32,6 +34,18 @@ static REPOSITORY_LOCKS: Lazy<Mutex<HashMap<String, Arc<Mutex<()>>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 static GLOBAL_GIT_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 static HISTORY_CACHES: Lazy<Mutex<HashMap<String, HistoryCache>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+static HISTORY_QUERY_CACHES: Lazy<Mutex<HashMap<String, HistoryQueryCache>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+static HISTORY_INDEX_PROGRESS: Lazy<Mutex<HashMap<String, HistoryIndexProgress>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+static HISTORY_INDEX_FINGERPRINTS: Lazy<Mutex<HashMap<String, String>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+static HISTORY_INDEX_WORKERS: Lazy<Mutex<HashSet<String>>> =
+    Lazy::new(|| Mutex::new(HashSet::new()));
+static HISTORY_CACHE_LIMIT_BYTES: AtomicU64 = AtomicU64::new(512 * 1024 * 1024);
+static HISTORY_CACHE_DEVELOPMENT: AtomicBool = AtomicBool::new(cfg!(debug_assertions));
+static CONTAINING_BRANCH_CACHES: Lazy<Mutex<HashMap<String, ContainingBranches>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 static CHERRY_PICK_ASSESSMENTS: Lazy<Mutex<HashMap<String, CherryPickApplicability>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
@@ -60,6 +74,16 @@ struct HistoryCache {
     requests: Option<mpsc::Sender<usize>>,
     responses: mpsc::Receiver<Result<(Vec<Oid>, bool), String>>,
     worker: Option<JoinHandle<()>>,
+    exhausted: bool,
+}
+
+#[derive(Debug)]
+struct HistoryQueryCache {
+    fingerprint: String,
+    query_hash: String,
+    oids: Vec<Oid>,
+    commits: Vec<CommitSummary>,
+    lanes: Vec<String>,
     exhausted: bool,
 }
 
@@ -333,6 +357,23 @@ pub fn watch_repository(
     watcher
         .watch(&workdir, RecursiveMode::Recursive)
         .map_err(|error| error.to_string())?;
+    let canonical_workdir = workdir.canonicalize().unwrap_or_else(|_| workdir.clone());
+    let mut extra_watch_roots = Vec::new();
+    for candidate in [repo.path(), repo.commondir()] {
+        let candidate = candidate
+            .canonicalize()
+            .unwrap_or_else(|_| candidate.to_path_buf());
+        if !candidate.starts_with(&canonical_workdir)
+            && !extra_watch_roots
+                .iter()
+                .any(|root: &PathBuf| candidate.starts_with(root))
+        {
+            watcher
+                .watch(&candidate, RecursiveMode::Recursive)
+                .map_err(|error| error.to_string())?;
+            extra_watch_roots.push(candidate);
+        }
+    }
 
     loop {
         let first = receiver.recv().map_err(|error| error.to_string())?;
@@ -987,6 +1028,913 @@ pub fn list_commits_cursor(
         // eagerly computed repository-wide total.
         total_commits: cache.oids.len().min(u32::MAX as usize) as u32,
     })
+}
+
+/// Queries commit history through Git's revision engine. GitFront only parses
+/// object ids; commit metadata and graph lanes continue to come from libgit2.
+pub fn query_commits(
+    path: String,
+    query: HistoryQuery,
+    cursor: Option<String>,
+    limit: u32,
+) -> Result<CommitQueryPage, String> {
+    if git_version().is_err() {
+        if query.scope == HistoryScope::CurrentBranch
+            && query.text.trim().is_empty()
+            && query
+                .path
+                .as_ref()
+                .is_none_or(|value| value.trim().is_empty())
+        {
+            let page = list_commits_cursor(path, cursor, limit)?;
+            return Ok(CommitQueryPage {
+                commits: page.commits,
+                next_cursor: page.next_cursor,
+                matched_count: page.total_commits,
+                indexing: HistoryIndexProgress {
+                    indexed_commits: 0,
+                    total_commits: 0,
+                    complete: true,
+                },
+            });
+        }
+        return Err("System Git is required for history scopes and filters. Repair or install Git for Windows.".to_owned());
+    }
+    let repo = Repository::discover(&path).map_err(format_git_error)?;
+    if repo.workdir().is_none() {
+        return Err("Bare repositories are not supported in the desktop view.".to_owned());
+    }
+    validate_history_query(&path, &query)?;
+    let fingerprint = history_graph_fingerprint(&path)?;
+    let query_hash = history_query_hash(&query);
+    let cache_key = format!("{}:{query_hash}", repository_cache_key(&repo)?);
+    let requested = limit.clamp(1, 500) as usize;
+    let start = match cursor.as_deref() {
+        None => 0,
+        Some(value) => {
+            let mut parts = value.split(':');
+            let cursor_fingerprint = parts.next().unwrap_or_default();
+            let cursor_query = parts.next().unwrap_or_default();
+            let position = parts
+                .next()
+                .ok_or_else(|| "The history cursor is invalid. Refresh the log.".to_owned())?
+                .parse::<usize>()
+                .map_err(|_| "The history cursor is invalid. Refresh the log.".to_owned())?;
+            if cursor_fingerprint != fingerprint || cursor_query != query_hash {
+                return Err("The repository history changed. Refresh the log.".to_owned());
+            }
+            position
+        }
+    };
+
+    let indexing = if query.text.trim().is_empty() || is_sha_prefix_search(&query.text) {
+        HistoryIndexProgress {
+            indexed_commits: 0,
+            total_commits: 0,
+            complete: true,
+        }
+    } else {
+        ensure_history_index(&repo, &path, &fingerprint)?
+    };
+
+    let mut caches = HISTORY_QUERY_CACHES.lock();
+    let rebuild = cursor.is_none()
+        || caches
+            .get(&cache_key)
+            .is_none_or(|cache| cache.fingerprint != fingerprint || cache.query_hash != query_hash);
+    if rebuild {
+        let initial_oids = if query.text.trim().is_empty() {
+            revision_oids(&path, &query, 0, requested + 1)?
+        } else {
+            filtered_revision_oids(&repo, &path, &query)?
+        };
+        let exhausted = query.text.trim().is_empty() && initial_oids.len() <= requested;
+        caches.insert(
+            cache_key.clone(),
+            HistoryQueryCache {
+                fingerprint: fingerprint.clone(),
+                query_hash: query_hash.clone(),
+                oids: initial_oids,
+                commits: Vec::new(),
+                lanes: Vec::new(),
+                exhausted,
+            },
+        );
+        trim_history_query_caches(&mut caches, &cache_key);
+    }
+    let cache = caches
+        .get_mut(&cache_key)
+        .expect("history query cache inserted");
+    if start > cache.commits.len() {
+        return Err("The history cursor is out of sequence. Refresh the log.".to_owned());
+    }
+    if query.text.trim().is_empty()
+        && cache.oids.len() < start.saturating_add(requested).saturating_add(1)
+        && !cache.exhausted
+    {
+        let additional = revision_oids(
+            &path,
+            &query,
+            cache.oids.len(),
+            start + requested + 1 - cache.oids.len(),
+        )?;
+        cache.exhausted = additional.len() < start + requested + 1 - cache.oids.len();
+        cache.oids.extend(additional);
+    }
+    let end = start.saturating_add(requested).min(cache.oids.len());
+    materialize_history_commits(&repo, cache, end)?;
+    let has_more = end < cache.oids.len() || (!cache.exhausted && query.text.trim().is_empty());
+    Ok(CommitQueryPage {
+        commits: cache.commits[start..end].to_vec(),
+        next_cursor: has_more.then(|| format!("{fingerprint}:{query_hash}:{end}")),
+        matched_count: cache.oids.len().min(u32::MAX as usize) as u32,
+        indexing,
+    })
+}
+
+pub fn list_history_refs(path: String) -> Result<Vec<CommitReference>, String> {
+    let repo = Repository::discover(path).map_err(format_git_error)?;
+    let mut result = Vec::new();
+    let references = repo.references().map_err(format_git_error)?;
+    for reference in references {
+        let reference = reference.map_err(format_git_error)?;
+        let Ok(full_name) = reference.name() else {
+            continue;
+        };
+        let (name, kind) = if let Some(name) = full_name.strip_prefix("refs/heads/") {
+            (name, CommitReferenceKind::LocalBranch)
+        } else if let Some(name) = full_name.strip_prefix("refs/remotes/") {
+            if name.ends_with("/HEAD") {
+                continue;
+            }
+            (name, CommitReferenceKind::RemoteBranch)
+        } else if let Some(name) = full_name.strip_prefix("refs/tags/") {
+            (name, CommitReferenceKind::Tag)
+        } else {
+            continue;
+        };
+        result.push(CommitReference {
+            name: name.to_owned(),
+            full_name: full_name.to_owned(),
+            kind,
+        });
+    }
+    result.sort_by_cached_key(|reference| {
+        (
+            reference_rank(&reference.kind),
+            reference.name.to_lowercase(),
+        )
+    });
+    Ok(result)
+}
+
+pub fn get_containing_branches(
+    path: String,
+    oid: String,
+    display_limit: u32,
+) -> Result<ContainingBranches, String> {
+    let repo = Repository::discover(&path).map_err(format_git_error)?;
+    let oid = Oid::from_str(&oid).map_err(format_git_error)?;
+    repo.find_commit(oid).map_err(format_git_error)?;
+    let fingerprint = refs_fingerprint(&path)?;
+    let key = format!("{}:{oid}:{fingerprint}", repository_cache_key(&repo)?);
+    if let Some(cached) = CONTAINING_BRANCH_CACHES.lock().get(&key).cloned() {
+        return Ok(limit_containing_branches(cached, display_limit));
+    }
+    let output = run_git_capture(
+        &path,
+        vec![
+            "for-each-ref".to_owned(),
+            format!("--contains={oid}"),
+            "--format=%(refname)%00".to_owned(),
+            "refs/heads".to_owned(),
+            "refs/remotes".to_owned(),
+        ],
+        &[],
+    )?;
+    if !output.status.success() {
+        return Err(redact(&String::from_utf8_lossy(&output.stderr)));
+    }
+    let mut local = Vec::new();
+    let mut remote = Vec::new();
+    for raw in output.stdout.split(|byte| *byte == 0) {
+        let name = String::from_utf8_lossy(raw).trim().to_owned();
+        if let Some(short) = name.strip_prefix("refs/heads/") {
+            local.push(short.to_owned());
+        } else if let Some(short) = name.strip_prefix("refs/remotes/")
+            && !short.ends_with("/HEAD")
+        {
+            remote.push(short.to_owned());
+        }
+    }
+    local.sort();
+    remote.sort();
+    let result = ContainingBranches {
+        local,
+        remote,
+        truncated_count: 0,
+        refs_fingerprint: fingerprint,
+    };
+    let mut caches = CONTAINING_BRANCH_CACHES.lock();
+    caches.insert(key, result.clone());
+    if caches.len() > 2048 {
+        let remove = caches.keys().next().cloned();
+        if let Some(remove) = remove {
+            caches.remove(&remove);
+        }
+    }
+    Ok(limit_containing_branches(result, display_limit))
+}
+
+pub fn watch_history_index(
+    path: String,
+    sink: StreamSink<HistoryIndexProgress>,
+) -> Result<(), String> {
+    let repo = Repository::discover(&path).map_err(format_git_error)?;
+    let key = repository_cache_key(&repo)?;
+    let mut previous: Option<HistoryIndexProgress> = None;
+    loop {
+        let progress =
+            HISTORY_INDEX_PROGRESS
+                .lock()
+                .get(&key)
+                .cloned()
+                .unwrap_or(HistoryIndexProgress {
+                    indexed_commits: 0,
+                    total_commits: 0,
+                    complete: false,
+                });
+        let changed = previous.as_ref().is_none_or(|old| {
+            old.indexed_commits != progress.indexed_commits
+                || old.total_commits != progress.total_commits
+                || old.complete != progress.complete
+        });
+        if changed {
+            if sink.add(progress.clone()).is_err() {
+                return Ok(());
+            }
+            previous = Some(progress.clone());
+        }
+        if progress.complete {
+            return Ok(());
+        }
+        thread::sleep(Duration::from_millis(200));
+    }
+}
+
+pub fn clear_repository_history_cache(path: String) -> Result<(), String> {
+    let repo = Repository::discover(&path).map_err(format_git_error)?;
+    let key = repository_cache_key(&repo)?;
+    if HISTORY_INDEX_WORKERS.lock().contains(&key) {
+        return Err("Wait for history indexing to finish before clearing this cache.".to_owned());
+    }
+    HISTORY_QUERY_CACHES
+        .lock()
+        .retain(|cache_key, _| !cache_key.starts_with(&key));
+    CONTAINING_BRANCH_CACHES
+        .lock()
+        .retain(|cache_key, _| !cache_key.starts_with(&key));
+    HISTORY_INDEX_PROGRESS.lock().remove(&key);
+    HISTORY_INDEX_FINGERPRINTS.lock().remove(&key);
+    let cache_path = history_database_path(&repo)?;
+    if cache_path.exists() {
+        fs::remove_file(&cache_path).map_err(|error| error.to_string())?;
+    }
+    for suffix in ["-wal", "-shm"] {
+        let sidecar = PathBuf::from(format!("{}{suffix}", cache_path.to_string_lossy()));
+        if sidecar.exists() {
+            let _ = fs::remove_file(sidecar);
+        }
+    }
+    Ok(())
+}
+
+pub fn clear_all_history_caches() -> Result<(), String> {
+    if !HISTORY_INDEX_WORKERS.lock().is_empty() {
+        return Err("Wait for history indexing to finish before clearing caches.".to_owned());
+    }
+    HISTORY_QUERY_CACHES.lock().clear();
+    CONTAINING_BRANCH_CACHES.lock().clear();
+    HISTORY_INDEX_PROGRESS.lock().clear();
+    HISTORY_INDEX_FINGERPRINTS.lock().clear();
+    let root = history_cache_root()?;
+    if root.exists() {
+        for entry in fs::read_dir(&root).map_err(|error| error.to_string())? {
+            let path = entry.map_err(|error| error.to_string())?.path();
+            if path.is_file() {
+                fs::remove_file(path).map_err(|error| error.to_string())?;
+            }
+        }
+    }
+    Ok(())
+}
+
+pub fn configure_history_cache(max_megabytes: u32, development: bool) -> Result<u64, String> {
+    let megabytes = max_megabytes.clamp(64, 4096) as u64;
+    HISTORY_CACHE_LIMIT_BYTES.store(megabytes * 1024 * 1024, Ordering::Relaxed);
+    HISTORY_CACHE_DEVELOPMENT.store(development, Ordering::Relaxed);
+    prune_history_databases()?;
+    history_cache_size_bytes()
+}
+
+pub fn history_cache_size_bytes() -> Result<u64, String> {
+    let root = history_cache_root()?;
+    if !root.exists() {
+        return Ok(0);
+    }
+    let mut total = 0_u64;
+    for entry in fs::read_dir(root).map_err(|error| error.to_string())? {
+        let path = entry.map_err(|error| error.to_string())?.path();
+        if path.is_file() {
+            total =
+                total.saturating_add(fs::metadata(path).map_err(|error| error.to_string())?.len());
+        }
+    }
+    Ok(total)
+}
+
+fn validate_history_query(path: &str, query: &HistoryQuery) -> Result<(), String> {
+    if query.text.contains('\0') || query.text.len() > 4096 {
+        return Err("The history search text is invalid.".to_owned());
+    }
+    match query.scope {
+        HistoryScope::SelectedRef => {
+            let selected = query.selected_ref.as_deref().ok_or_else(|| {
+                "Choose a branch, remote branch, or tag for this history scope.".to_owned()
+            })?;
+            if !selected.starts_with("refs/")
+                || selected.starts_with('-')
+                || selected.contains('\0')
+            {
+                return Err("The selected history ref is invalid.".to_owned());
+            }
+            let output = run_git_capture(
+                path,
+                vec![
+                    "rev-parse".to_owned(),
+                    "--verify".to_owned(),
+                    format!("{selected}^{{commit}}"),
+                ],
+                &[],
+            )?;
+            if !output.status.success() {
+                return Err("The selected history ref no longer exists.".to_owned());
+            }
+        }
+        _ if query.selected_ref.is_some() => {
+            return Err("A selected ref is only valid for the selected-ref scope.".to_owned());
+        }
+        _ => {}
+    }
+    if let Some(value) = query.path.as_deref() {
+        safe_relative_path(value)?;
+    }
+    Ok(())
+}
+
+fn revision_arguments(query: &HistoryQuery) -> Vec<String> {
+    let mut args = vec!["rev-list".to_owned(), "--topo-order".to_owned()];
+    match query.scope {
+        HistoryScope::CurrentBranch => args.push("HEAD".to_owned()),
+        HistoryScope::SelectedRef => args.push(query.selected_ref.clone().unwrap_or_default()),
+        HistoryScope::AllRefs => {
+            args.extend([
+                "--branches".to_owned(),
+                "--remotes".to_owned(),
+                "--tags".to_owned(),
+            ]);
+        }
+    }
+    if let Some(path) = query.path.as_ref().filter(|value| !value.is_empty()) {
+        args.push("--".to_owned());
+        args.push(path.clone());
+    }
+    args
+}
+
+fn revision_oids(
+    path: &str,
+    query: &HistoryQuery,
+    skip: usize,
+    count: usize,
+) -> Result<Vec<Oid>, String> {
+    let mut args = revision_arguments(query);
+    args.insert(1, format!("--skip={skip}"));
+    args.insert(1, format!("--max-count={count}"));
+    let output = run_git_capture(path, args, &[])?;
+    if !output.status.success() {
+        let stderr = redact(&String::from_utf8_lossy(&output.stderr));
+        if stderr.contains("unknown revision") || stderr.contains("ambiguous argument 'HEAD'") {
+            return Ok(Vec::new());
+        }
+        return Err(stderr);
+    }
+    parse_revision_oids(&output.stdout)
+}
+
+fn all_revision_oids(path: &str, query: &HistoryQuery) -> Result<Vec<Oid>, String> {
+    let output = run_git_capture(path, revision_arguments(query), &[])?;
+    if !output.status.success() {
+        let stderr = redact(&String::from_utf8_lossy(&output.stderr));
+        if stderr.contains("unknown revision") || stderr.contains("ambiguous argument 'HEAD'") {
+            return Ok(Vec::new());
+        }
+        return Err(stderr);
+    }
+    parse_revision_oids(&output.stdout)
+}
+
+fn parse_revision_oids(output: &[u8]) -> Result<Vec<Oid>, String> {
+    output
+        .split(|byte| *byte == b'\n')
+        .filter_map(|line| {
+            let value = String::from_utf8_lossy(line).trim().to_owned();
+            (!value.is_empty()).then_some(value)
+        })
+        .map(|value| {
+            Oid::from_str(&value).map_err(|_| "Git returned an invalid commit id.".to_owned())
+        })
+        .collect()
+}
+
+fn materialize_history_commits(
+    repo: &Repository,
+    cache: &mut HistoryQueryCache,
+    end: usize,
+) -> Result<(), String> {
+    if end <= cache.commits.len() {
+        return Ok(());
+    }
+    let mut additions = Vec::with_capacity(end - cache.commits.len());
+    for oid in &cache.oids[cache.commits.len()..end] {
+        let commit = repo.find_commit(*oid).map_err(format_git_error)?;
+        additions.push(commit_summary(&commit));
+    }
+    let visible = additions
+        .iter()
+        .filter_map(|commit| Oid::from_str(&commit.oid).ok())
+        .collect();
+    let references = references_by_oid(repo, &visible)?;
+    for commit in &mut additions {
+        if let Ok(oid) = Oid::from_str(&commit.oid) {
+            commit.references = references.get(&oid).cloned().unwrap_or_default();
+        }
+    }
+    assign_graph_lanes_with_state(&mut additions, &mut cache.lanes);
+    cache.commits.extend(additions);
+    Ok(())
+}
+
+fn commit_summary(commit: &git2::Commit<'_>) -> CommitSummary {
+    let oid = commit.id().to_string();
+    CommitSummary {
+        short_oid: oid[..8].to_owned(),
+        oid,
+        summary: commit
+            .summary()
+            .ok()
+            .flatten()
+            .unwrap_or("(no message)")
+            .to_owned(),
+        author_name: commit.author().name().unwrap_or("Unknown").to_owned(),
+        author_email: commit.author().email().unwrap_or_default().to_owned(),
+        authored_at: commit.author().when().seconds(),
+        parent_oids: commit
+            .parent_ids()
+            .map(|parent| parent.to_string())
+            .collect(),
+        references: Vec::new(),
+        lane: GraphLane {
+            column: 0,
+            parent_columns: Vec::new(),
+        },
+    }
+}
+
+fn history_query_hash(query: &HistoryQuery) -> String {
+    let mut digest = Sha256::new();
+    digest.update(format!(
+        "{:?}\0{:?}\0{}\0{:?}",
+        query.scope, query.selected_ref, query.text, query.path
+    ));
+    format!("{:x}", digest.finalize())[..16].to_owned()
+}
+
+fn refs_fingerprint(path: &str) -> Result<String, String> {
+    let output = run_git_capture(
+        path,
+        vec![
+            "for-each-ref".to_owned(),
+            "--sort=refname".to_owned(),
+            "--format=%(refname)%00%(objectname)%00%(*objectname)%00".to_owned(),
+            "refs/heads".to_owned(),
+            "refs/remotes".to_owned(),
+            "refs/tags".to_owned(),
+        ],
+        &[],
+    )?;
+    if !output.status.success() {
+        return Err(redact(&String::from_utf8_lossy(&output.stderr)));
+    }
+    let head = run_git_capture(
+        path,
+        vec![
+            "rev-parse".to_owned(),
+            "--symbolic-full-name".to_owned(),
+            "HEAD".to_owned(),
+        ],
+        &[],
+    )?;
+    let mut digest = Sha256::new();
+    digest.update(&head.stdout);
+    digest.update(&output.stdout);
+    Ok(format!("{:x}", digest.finalize())[..16].to_owned())
+}
+
+fn history_graph_fingerprint(path: &str) -> Result<String, String> {
+    let mut digest = Sha256::new();
+    digest.update(refs_fingerprint(path)?);
+    for name in ["shallow", "info/grafts"] {
+        let output = run_git_capture(
+            path,
+            vec![
+                "rev-parse".to_owned(),
+                "--git-path".to_owned(),
+                name.to_owned(),
+            ],
+            &[],
+        )?;
+        if output.status.success() {
+            let value = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+            if let Ok(bytes) = fs::read(value) {
+                digest.update(bytes);
+            }
+        }
+    }
+    Ok(format!("{:x}", digest.finalize())[..16].to_owned())
+}
+
+fn trim_history_query_caches(caches: &mut HashMap<String, HistoryQueryCache>, keep: &str) {
+    while caches.len() > 24 {
+        let remove = caches.keys().find(|key| key.as_str() != keep).cloned();
+        if let Some(remove) = remove {
+            caches.remove(&remove);
+        } else {
+            break;
+        }
+    }
+}
+
+fn limit_containing_branches(mut value: ContainingBranches, limit: u32) -> ContainingBranches {
+    if limit == 0 {
+        return value;
+    }
+    let total = value.local.len() + value.remote.len();
+    let limit = limit as usize;
+    if total > limit {
+        let local_limit = value.local.len().min(limit);
+        value.local.truncate(local_limit);
+        value.remote.truncate(limit - local_limit);
+        value.truncated_count = (total - limit).min(u32::MAX as usize) as u32;
+    }
+    value
+}
+
+fn history_cache_root() -> Result<PathBuf, String> {
+    let local = std::env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .ok_or_else(|| "Windows LocalAppData is unavailable.".to_owned())?;
+    let mut root = local.join("GitFront");
+    if HISTORY_CACHE_DEVELOPMENT.load(Ordering::Relaxed) {
+        root.push("develop");
+    }
+    Ok(root.join("cache").join("v1"))
+}
+
+fn history_database_path(repo: &Repository) -> Result<PathBuf, String> {
+    let common = repo
+        .commondir()
+        .canonicalize()
+        .unwrap_or_else(|_| repo.commondir().to_path_buf());
+    let mut digest = Sha256::new();
+    digest.update(display_path(common).to_lowercase());
+    Ok(history_cache_root()?.join(format!("{:x}.sqlite3", digest.finalize())))
+}
+
+fn prune_history_databases() -> Result<(), String> {
+    let root = history_cache_root()?;
+    if !root.exists() {
+        return Ok(());
+    }
+    let now = std::time::SystemTime::now();
+    let retention = Duration::from_secs(30 * 24 * 60 * 60);
+    let mut files = Vec::new();
+    for entry in fs::read_dir(&root).map_err(|error| error.to_string())? {
+        let path = entry.map_err(|error| error.to_string())?.path();
+        if !path.is_file() || path.extension().and_then(|value| value.to_str()) != Some("sqlite3") {
+            continue;
+        }
+        let metadata = fs::metadata(&path).map_err(|error| error.to_string())?;
+        let modified = metadata.modified().unwrap_or(std::time::UNIX_EPOCH);
+        let size = history_database_family_size(&path);
+        files.push((path, size, modified));
+    }
+    for (path, _, modified) in &files {
+        if now
+            .duration_since(*modified)
+            .is_ok_and(|age| age > retention)
+        {
+            remove_history_database_family(path);
+        }
+    }
+    files.retain(|(path, _, _)| path.exists());
+    files.sort_by_key(|(_, _, modified)| *modified);
+    let limit = HISTORY_CACHE_LIMIT_BYTES.load(Ordering::Relaxed);
+    let mut total = files.iter().map(|(_, size, _)| *size).sum::<u64>();
+    for (path, size, _) in files {
+        if total <= limit {
+            break;
+        }
+        if fs::remove_file(&path).is_ok() {
+            for suffix in ["-wal", "-shm"] {
+                let _ =
+                    fs::remove_file(PathBuf::from(format!("{}{suffix}", path.to_string_lossy())));
+            }
+            total = total.saturating_sub(size);
+        }
+    }
+    Ok(())
+}
+
+fn history_database_family_size(path: &Path) -> u64 {
+    let mut total = fs::metadata(path).map(|value| value.len()).unwrap_or(0);
+    for suffix in ["-wal", "-shm"] {
+        let sidecar = PathBuf::from(format!("{}{suffix}", path.to_string_lossy()));
+        total = total.saturating_add(fs::metadata(sidecar).map(|value| value.len()).unwrap_or(0));
+    }
+    total
+}
+
+fn remove_history_database_family(path: &Path) {
+    let _ = fs::remove_file(path);
+    for suffix in ["-wal", "-shm"] {
+        let _ = fs::remove_file(PathBuf::from(format!("{}{suffix}", path.to_string_lossy())));
+    }
+}
+
+fn open_history_database(repo: &Repository) -> Result<Connection, String> {
+    let path = history_database_path(repo)?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    match initialize_history_database(&path) {
+        Ok(connection) => Ok(connection),
+        Err(first_error) => {
+            quarantine_history_database(&path, first_error);
+            initialize_history_database(&path).map_err(|second_error| {
+                format!("History cache could not be rebuilt: {second_error}")
+            })
+        }
+    }
+}
+
+fn initialize_history_database(path: &Path) -> Result<Connection, String> {
+    let connection = Connection::open(path).map_err(|error| error.to_string())?;
+    connection
+        .pragma_update(None, "journal_mode", "WAL")
+        .map_err(|error| error.to_string())?;
+    connection.execute_batch(
+        "CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);\
+         CREATE TABLE IF NOT EXISTS commits (oid TEXT PRIMARY KEY, title TEXT NOT NULL, message TEXT NOT NULL, author_name TEXT NOT NULL, author_email TEXT NOT NULL, authored_at INTEGER NOT NULL, last_seen INTEGER NOT NULL);\
+         CREATE VIRTUAL TABLE IF NOT EXISTS commit_fts USING fts5(oid UNINDEXED, title, message, author_name, author_email);\
+         INSERT OR REPLACE INTO metadata(key,value) VALUES('schema_version','1');"
+    ).map_err(|error| error.to_string())?;
+    Ok(connection)
+}
+
+fn quarantine_history_database(path: &Path, _error: String) {
+    if path.exists() {
+        let quarantine = path.with_extension(format!("corrupt-{}.sqlite3", std::process::id()));
+        let _ = fs::rename(path, quarantine);
+    }
+}
+
+fn ensure_history_index(
+    repo: &Repository,
+    path: &str,
+    fingerprint: &str,
+) -> Result<HistoryIndexProgress, String> {
+    let key = repository_cache_key(repo)?;
+    let same_fingerprint = HISTORY_INDEX_FINGERPRINTS
+        .lock()
+        .get(&key)
+        .is_some_and(|value| value == fingerprint);
+    if same_fingerprint
+        && let Some(progress) = HISTORY_INDEX_PROGRESS.lock().get(&key).cloned()
+        && (progress.complete || HISTORY_INDEX_WORKERS.lock().contains(&key))
+    {
+        return Ok(progress);
+    }
+    let database = open_history_database(repo)?;
+    let stored_fingerprint = database
+        .query_row(
+            "SELECT value FROM metadata WHERE key='graph_fingerprint'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .ok();
+    if stored_fingerprint.as_deref() == Some(fingerprint) {
+        let count = database
+            .query_row("SELECT COUNT(*) FROM commits", [], |row| {
+                row.get::<_, u32>(0)
+            })
+            .unwrap_or(0);
+        let progress = HistoryIndexProgress {
+            indexed_commits: count,
+            total_commits: count,
+            complete: true,
+        };
+        HISTORY_INDEX_FINGERPRINTS
+            .lock()
+            .insert(key.clone(), fingerprint.to_owned());
+        HISTORY_INDEX_PROGRESS
+            .lock()
+            .insert(key.clone(), progress.clone());
+        return Ok(progress);
+    }
+    drop(database);
+    HISTORY_INDEX_FINGERPRINTS
+        .lock()
+        .insert(key.clone(), fingerprint.to_owned());
+    let worker_key = key.clone();
+    if HISTORY_INDEX_WORKERS.lock().insert(worker_key.clone()) {
+        let worker_path = path.to_owned();
+        let worker_fingerprint = fingerprint.to_owned();
+        thread::spawn(move || {
+            let result = build_history_index(&worker_path, &worker_key, &worker_fingerprint);
+            if result.is_ok() {
+                HISTORY_INDEX_FINGERPRINTS
+                    .lock()
+                    .insert(worker_key.clone(), worker_fingerprint);
+            } else {
+                HISTORY_INDEX_PROGRESS.lock().insert(
+                    worker_key.clone(),
+                    HistoryIndexProgress {
+                        indexed_commits: 0,
+                        total_commits: 0,
+                        complete: true,
+                    },
+                );
+            }
+            HISTORY_INDEX_WORKERS.lock().remove(&worker_key);
+        });
+    }
+    Ok(HISTORY_INDEX_PROGRESS
+        .lock()
+        .get(&key)
+        .cloned()
+        .unwrap_or(HistoryIndexProgress {
+            indexed_commits: 0,
+            total_commits: 0,
+            complete: false,
+        }))
+}
+
+fn build_history_index(path: &str, key: &str, fingerprint: &str) -> Result<(), String> {
+    let repo = Repository::discover(path).map_err(format_git_error)?;
+    let all_query = HistoryQuery {
+        scope: HistoryScope::AllRefs,
+        selected_ref: None,
+        text: String::new(),
+        path: None,
+    };
+    let oids = all_revision_oids(path, &all_query)?;
+    let total = oids.len().min(u32::MAX as usize) as u32;
+    HISTORY_INDEX_PROGRESS.lock().insert(
+        key.to_owned(),
+        HistoryIndexProgress {
+            indexed_commits: 0,
+            total_commits: total,
+            complete: oids.is_empty(),
+        },
+    );
+    let mut connection = open_history_database(&repo)?;
+    for (chunk_index, chunk) in oids.chunks(500).enumerate() {
+        let transaction = connection
+            .transaction()
+            .map_err(|error| error.to_string())?;
+        for oid in chunk {
+            let commit = repo.find_commit(*oid).map_err(format_git_error)?;
+            let id = oid.to_string();
+            let title = commit.summary().ok().flatten().unwrap_or("(no message)");
+            let message = commit.message().ok().unwrap_or(title);
+            let author = commit.author();
+            let author_name = author.name().unwrap_or("Unknown");
+            let author_email = author.email().unwrap_or_default();
+            transaction.execute("INSERT OR REPLACE INTO commits(oid,title,message,author_name,author_email,authored_at,last_seen) VALUES(?1,?2,?3,?4,?5,?6,strftime('%s','now'))", params![id, title, message, author_name, author_email, author.when().seconds()]).map_err(|error| error.to_string())?;
+            transaction
+                .execute("DELETE FROM commit_fts WHERE oid=?1", params![id])
+                .map_err(|error| error.to_string())?;
+            transaction.execute("INSERT INTO commit_fts(oid,title,message,author_name,author_email) VALUES(?1,?2,?3,?4,?5)", params![id, title, message, author_name, author_email]).map_err(|error| error.to_string())?;
+        }
+        transaction.commit().map_err(|error| error.to_string())?;
+        let indexed = ((chunk_index + 1) * 500)
+            .min(oids.len())
+            .min(u32::MAX as usize) as u32;
+        HISTORY_INDEX_PROGRESS.lock().insert(
+            key.to_owned(),
+            HistoryIndexProgress {
+                indexed_commits: indexed,
+                total_commits: total,
+                complete: indexed == total,
+            },
+        );
+    }
+    let stale_oids = {
+        let mut statement = connection
+            .prepare("SELECT oid FROM commits WHERE last_seen < strftime('%s','now') - 2592000")
+            .map_err(|error| error.to_string())?;
+        statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|error| error.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| error.to_string())?
+    };
+    if !stale_oids.is_empty() {
+        let transaction = connection
+            .transaction()
+            .map_err(|error| error.to_string())?;
+        for oid in stale_oids {
+            transaction
+                .execute("DELETE FROM commit_fts WHERE oid=?1", params![oid])
+                .map_err(|error| error.to_string())?;
+            transaction
+                .execute("DELETE FROM commits WHERE oid=?1", params![oid])
+                .map_err(|error| error.to_string())?;
+        }
+        transaction.commit().map_err(|error| error.to_string())?;
+    }
+    connection
+        .execute(
+            "INSERT OR REPLACE INTO metadata(key,value) VALUES('graph_fingerprint',?1)",
+            params![fingerprint],
+        )
+        .map_err(|error| error.to_string())?;
+    drop(connection);
+    prune_history_databases()?;
+    Ok(())
+}
+
+fn filtered_revision_oids(
+    repo: &Repository,
+    path: &str,
+    query: &HistoryQuery,
+) -> Result<Vec<Oid>, String> {
+    let reachable = all_revision_oids(path, query)?;
+    if query.text.trim().is_empty() {
+        return Ok(reachable);
+    }
+    let text = query.text.trim();
+    let mut matched = HashSet::new();
+    if is_sha_prefix_search(text) {
+        for oid in &reachable {
+            if oid.to_string().starts_with(text) {
+                matched.insert(*oid);
+            }
+        }
+        return Ok(reachable
+            .into_iter()
+            .filter(|oid| matched.contains(oid))
+            .collect());
+    }
+    let connection = open_history_database(repo)?;
+    let expression = text
+        .split_whitespace()
+        .map(|term| format!("\"{}\"", term.replace('"', "\"\"")))
+        .collect::<Vec<_>>()
+        .join(" AND ");
+    if !expression.is_empty() {
+        let mut statement = connection
+            .prepare("SELECT oid FROM commit_fts WHERE commit_fts MATCH ?1")
+            .map_err(|error| error.to_string())?;
+        let rows = statement
+            .query_map(params![expression], |row| row.get::<_, String>(0))
+            .map_err(|error| error.to_string())?;
+        for row in rows {
+            if let Ok(oid) = Oid::from_str(&row.map_err(|error| error.to_string())?) {
+                matched.insert(oid);
+            }
+        }
+    }
+    Ok(reachable
+        .into_iter()
+        .filter(|oid| matched.contains(oid))
+        .collect())
+}
+
+fn is_sha_prefix_search(value: &str) -> bool {
+    let value = value.trim();
+    (4..=64).contains(&value.len()) && value.chars().all(|character| character.is_ascii_hexdigit())
 }
 
 pub fn get_commit_detail(path: String, oid: String) -> Result<CommitDetail, String> {
@@ -3620,6 +4568,7 @@ fn run_git(
     stdin: Option<Vec<u8>>,
     environment: &[(&str, &str)],
 ) -> Result<OperationResult, String> {
+    let history_may_change = git_arguments_may_change_history(&args);
     let canonical = Repository::discover(path)
         .ok()
         .and_then(|repo| repo.workdir().map(Path::to_path_buf))
@@ -3634,7 +4583,52 @@ fn run_git(
     };
     let _guard = lock.lock();
     let output = run_git_capture_with_stdin(path, args, stdin, environment)?;
+    if history_may_change {
+        invalidate_history_memory(path);
+    }
     Ok(result_from_output("git operation", output))
+}
+
+fn git_arguments_may_change_history(args: &[String]) -> bool {
+    let mut index = 0;
+    while index < args.len() {
+        if args[index] == "-c" {
+            index += 2;
+            continue;
+        }
+        return matches!(
+            args[index].as_str(),
+            "branch"
+                | "checkout"
+                | "cherry-pick"
+                | "commit"
+                | "fetch"
+                | "merge"
+                | "pull"
+                | "rebase"
+                | "reset"
+                | "revert"
+                | "switch"
+                | "tag"
+                | "update-ref"
+        );
+    }
+    false
+}
+
+fn invalidate_history_memory(path: &str) {
+    let Ok(repo) = Repository::discover(path) else {
+        return;
+    };
+    let Ok(key) = repository_cache_key(&repo) else {
+        return;
+    };
+    HISTORY_QUERY_CACHES
+        .lock()
+        .retain(|cache_key, _| !cache_key.starts_with(&key));
+    CONTAINING_BRANCH_CACHES
+        .lock()
+        .retain(|cache_key, _| !cache_key.starts_with(&key));
 }
 
 fn hide_console_window(command: &mut Command) {
