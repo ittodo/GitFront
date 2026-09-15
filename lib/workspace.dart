@@ -2728,34 +2728,44 @@ class _HistoryPanel extends ConsumerWidget {
       }
       return Center(child: Text(strings.noCommits));
     }
-    return ListView.builder(
-      key: const ValueKey('virtualized-commit-list'),
-      cacheExtent: 192,
-      itemExtent: 64,
-      itemCount: tab.commits.length + (tab.nextCursor == null ? 0 : 1),
-      itemBuilder: (context, index) {
-        if (index == tab.commits.length) {
-          return Padding(
-            padding: const EdgeInsets.all(12),
-            child: OutlinedButton(
-              onPressed: tab.busy
-                  ? null
-                  : () => unawaited(
-                      ref.read(gitFrontProvider.notifier).loadMoreCommits(),
-                    ),
-              child: Text(strings.loadMore),
-            ),
-          );
-        }
-        final commit = tab.commits[index];
-        return _CommitTile(
-          key: ValueKey('commit:${commit.oid}'),
-          strings: strings,
-          tab: tab,
-          commit: commit,
-          onError: onError,
-        );
-      },
+    return Column(
+      children: [
+        _GraphLegend(strings: strings),
+        const Divider(height: 1),
+        Expanded(
+          child: ListView.builder(
+            key: const ValueKey('virtualized-commit-list'),
+            cacheExtent: 192,
+            itemExtent: 64,
+            itemCount: tab.commits.length + (tab.nextCursor == null ? 0 : 1),
+            itemBuilder: (context, index) {
+              if (index == tab.commits.length) {
+                return Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: OutlinedButton(
+                    onPressed: tab.busy
+                        ? null
+                        : () => unawaited(
+                            ref
+                                .read(gitFrontProvider.notifier)
+                                .loadMoreCommits(),
+                          ),
+                    child: Text(strings.loadMore),
+                  ),
+                );
+              }
+              final commit = tab.commits[index];
+              return _CommitTile(
+                key: ValueKey('commit:${commit.oid}'),
+                strings: strings,
+                tab: tab,
+                commit: commit,
+                onError: onError,
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }
@@ -2907,7 +2917,11 @@ class _CommitTileState extends ConsumerState<_CommitTile> {
             child: ListTile(
               selected: selected,
               dense: true,
-              leading: _GraphDot(lane: commit.lane),
+              leading: _GraphDot(
+                lane: commit.lane,
+                references: commit.references,
+                strings: strings,
+              ),
               title: Row(
                 children: [
                   if (commit.references.isNotEmpty) ...[
@@ -6919,9 +6933,53 @@ class _StatusBadge extends StatelessWidget {
   }
 }
 
+class _GraphLegend extends StatelessWidget {
+  const _GraphLegend({required this.strings});
+
+  final GitFrontStrings strings;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    height: 32,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: Row(
+        children: [
+          Container(
+            width: 9,
+            height: 9,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+          ),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text(
+              strings.graphLegend,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
 class _GraphDot extends StatelessWidget {
-  const _GraphDot({required this.lane});
+  const _GraphDot({
+    required this.lane,
+    required this.references,
+    required this.strings,
+  });
+
   final GraphLane lane;
+  final List<CommitReference> references;
+  final GitFrontStrings strings;
 
   @override
   Widget build(BuildContext context) {
@@ -6932,22 +6990,32 @@ class _GraphDot extends StatelessWidget {
       Colors.pink,
       Colors.blue,
     ];
-    return SizedBox(
-      width: 32,
-      child: Align(
-        alignment: Alignment(
-          -1 + (lane.column.clamp(0, 4).toDouble() * 0.45),
-          0,
-        ),
-        child: Container(
-          width: 11,
-          height: 11,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: palette[lane.column.toInt() % palette.length],
-            border: Border.all(
-              color: Theme.of(context).colorScheme.surface,
-              width: 2,
+    final directReferences = references
+        .where((reference) => reference.kind != CommitReferenceKind.head)
+        .map((reference) => reference.name)
+        .toList(growable: false);
+    return Tooltip(
+      message: strings.graphDotTooltip(
+        lane.column.toInt() + 1,
+        directReferences,
+      ),
+      child: SizedBox(
+        width: 32,
+        child: Align(
+          alignment: Alignment(
+            -1 + (lane.column.clamp(0, 4).toDouble() * 0.45),
+            0,
+          ),
+          child: Container(
+            width: 11,
+            height: 11,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: palette[lane.column.toInt() % palette.length],
+              border: Border.all(
+                color: Theme.of(context).colorScheme.surface,
+                width: 2,
+              ),
             ),
           ),
         ),

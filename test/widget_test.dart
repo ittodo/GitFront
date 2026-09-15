@@ -362,6 +362,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(
+      find.text('Dot color = graph path · Branches and tags = badges'),
+      findsOneWidget,
+    );
+    expect(
+      find.byTooltip('Graph path 1\nDirect refs: main, origin/main, v1.0.0'),
+      findsOneWidget,
+    );
     expect(find.text('HEAD'), findsOneWidget);
     expect(find.text('main'), findsWidgets);
     expect(find.text('origin/main'), findsOneWidget);

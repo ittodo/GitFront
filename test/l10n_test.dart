@@ -37,5 +37,10 @@ void main() {
     expect(english.discardChangesQuestion, 'Discard changes?');
     expect(korean.fetch, 'Fetch');
     expect(english.fetch, 'Fetch');
+    expect(korean.graphDotTooltip(2, ['main']), '그래프 경로 2\n직접 참조: main');
+    expect(
+      english.graphDotTooltip(2, const []),
+      'Graph path 2\nNo branch or tag points directly to this commit.',
+    );
   });
 }

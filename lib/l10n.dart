@@ -105,6 +105,24 @@ class GitFrontStrings {
   String get noTextualDiff => text('표시할 텍스트 차이가 없습니다', 'No textual diff');
   String get noDifferences => text('차이가 없습니다', 'No differences');
   String get noCommits => text('커밋이 없습니다', 'No commits');
+  String get graphLegend => text(
+    '점 색상 = 그래프 경로 · 브랜치와 태그 = 배지',
+    'Dot color = graph path · Branches and tags = badges',
+  );
+  String graphDotTooltip(int path, List<String> references) {
+    final heading = text('그래프 경로 $path', 'Graph path $path');
+    if (references.isEmpty) {
+      return text(
+        '$heading\n이 커밋을 직접 가리키는 브랜치나 태그가 없습니다.',
+        '$heading\nNo branch or tag points directly to this commit.',
+      );
+    }
+    return text(
+      '$heading\n직접 참조: ${references.join(', ')}',
+      '$heading\nDirect refs: ${references.join(', ')}',
+    );
+  }
+
   String get binaryFile =>
       text('바이너리 또는 비 UTF-8 파일', 'Binary or non-UTF-8 file');
   String get fileLargerThan5Mb =>
